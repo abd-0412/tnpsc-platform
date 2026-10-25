@@ -766,3 +766,127 @@ describe('7th Std Tamil Term 1 Unit 2 Question Bank Validation (74 Questions)', 
     expect(totalLessonQuestions).toBe(74);
   });
 });
+
+describe('7th Std Tamil Term 1 Unit 3 Question Bank Validation (105 Questions)', () => {
+  const filePath = path.resolve(__dirname, '../../../data/questions/tamil/7th_term1_unit3.jsonl');
+
+  it('successfully reads and parses all 105 questions skipping comment headers', () => {
+    expect(fs.existsSync(filePath)).toBe(true);
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const questions = parseJsonLines(content);
+
+    expect(questions).toHaveLength(105);
+  });
+
+  it('validates that every single question in 7th Term 1 Unit 3 passes kind & structured validation', () => {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const questions = parseJsonLines(content);
+
+    for (const q of questions) {
+      const res = validateQuestion(q);
+      if (!res.valid) {
+        console.error(`Validation failed for question ${q.id}:`, res.errors);
+      }
+      expect(res.valid, `Question ${q.id} should be valid`).toBe(true);
+      expect(res.errors).toHaveLength(0);
+
+      const parityRes = validateBilingualParity(q);
+      expect(parityRes.valid, `Parity check for ${q.id}`).toBe(true);
+    }
+  });
+
+  it('verifies all 789 questions across complete 6th Standard Tamil (544) and complete 7th Standard Term 1 (245) have unique IDs', () => {
+    const t1u1 = fs.readFileSync(path.resolve(__dirname, '../../../data/questions/tamil/6th_term1_unit1.jsonl'), 'utf-8');
+    const t1u2 = fs.readFileSync(path.resolve(__dirname, '../../../data/questions/tamil/6th_term1_unit2.jsonl'), 'utf-8');
+    const t1u3 = fs.readFileSync(path.resolve(__dirname, '../../../data/questions/tamil/6th_term1_unit3.jsonl'), 'utf-8');
+    const t2u1 = fs.readFileSync(path.resolve(__dirname, '../../../data/questions/tamil/6th_term2_unit1.jsonl'), 'utf-8');
+    const t2u2 = fs.readFileSync(path.resolve(__dirname, '../../../data/questions/tamil/6th_term2_unit2.jsonl'), 'utf-8');
+    const t3u1 = fs.readFileSync(path.resolve(__dirname, '../../../data/questions/tamil/6th_term3_unit1.jsonl'), 'utf-8');
+    const t3u2 = fs.readFileSync(path.resolve(__dirname, '../../../data/questions/tamil/6th_term3_unit2.jsonl'), 'utf-8');
+    const t3u3 = fs.readFileSync(path.resolve(__dirname, '../../../data/questions/tamil/6th_term3_unit3.jsonl'), 'utf-8');
+    const t7t1u1 = fs.readFileSync(path.resolve(__dirname, '../../../data/questions/tamil/7th_term1_unit1.jsonl'), 'utf-8');
+    const t7t1u2 = fs.readFileSync(path.resolve(__dirname, '../../../data/questions/tamil/7th_term1_unit2.jsonl'), 'utf-8');
+    const t7t1u3 = fs.readFileSync(filePath, 'utf-8');
+
+    const allQuestions = [
+      ...parseJsonLines(t1u1),
+      ...parseJsonLines(t1u2),
+      ...parseJsonLines(t1u3),
+      ...parseJsonLines(t2u1),
+      ...parseJsonLines(t2u2),
+      ...parseJsonLines(t3u1),
+      ...parseJsonLines(t3u2),
+      ...parseJsonLines(t3u3),
+      ...parseJsonLines(t7t1u1),
+      ...parseJsonLines(t7t1u2),
+      ...parseJsonLines(t7t1u3),
+    ];
+
+    const idSet = new Set<string>();
+    for (const q of allQuestions) {
+      expect(idSet.has(q.id), `Duplicate question ID across platform: ${q.id}`).toBe(false);
+      idSet.add(q.id);
+
+      expect(q.source).toBeDefined();
+      expect(['book', 'past_paper', 'other']).toContain(q.source.type);
+    }
+
+    expect(allQuestions).toHaveLength(789); // 544 (6th Std) + 245 (7th T1: 66+74+105) = 789
+  });
+
+  it('verifies all 6 lesson files in 7th Term 1 Unit 3 load correctly and sum to 105 questions', () => {
+    const lessonFiles = [
+      '13_viduthalai_thirunaal.jsonl',
+      '14_thesiyam_kaatha_semmal_muthuramalingathevar.jsonl',
+      '15_kappalottiya_thamizhar.jsonl',
+      '16_orezhuthu_orumozhi_pagupatham_pagappatham.jsonl',
+      '17_iyal3_mozhipayirchi_kalaichorkal.jsonl',
+      '18_thirukkural_iyal3.jsonl',
+    ];
+
+    let totalLessonQuestions = 0;
+    for (const file of lessonFiles) {
+      const p = path.resolve(__dirname, `../../../data/questions/tamil/7th_term1/${file}`);
+      expect(fs.existsSync(p), `File ${file} should exist`).toBe(true);
+      const content = fs.readFileSync(p, 'utf-8');
+      const questions = parseJsonLines(content);
+      totalLessonQuestions += questions.length;
+    }
+
+    expect(totalLessonQuestions).toBe(105);
+  });
+
+  it('verifies all 18 lesson files across complete 7th Standard Term 1 sum to 245 questions', () => {
+    const lessonFiles = [
+      '01_engal_tamil.jsonl',
+      '02_onralla_irandalla.jsonl',
+      '03_pechumozhiyum_ezhuthumozhiyum.jsonl',
+      '04_solavadai_aalukku_oru_velai.jsonl',
+      '05_kutriyalukaram_kutriyalikaram.jsonl',
+      '06_iyal1_mozhipayirchi_kalaichorkal.jsonl',
+      '07_kaadu.jsonl',
+      '08_appadiye_nirkattum_antha_maram.jsonl',
+      '09_thamizharin_kapparkalai.jsonl',
+      '10_vilangukal_ulagam_kaadukalin_thalaivan.jsonl',
+      '11_naalvagai_kurukkangal_kalaichorkal.jsonl',
+      '12_thirukkural.jsonl',
+      '13_viduthalai_thirunaal.jsonl',
+      '14_thesiyam_kaatha_semmal_muthuramalingathevar.jsonl',
+      '15_kappalottiya_thamizhar.jsonl',
+      '16_orezhuthu_orumozhi_pagupatham_pagappatham.jsonl',
+      '17_iyal3_mozhipayirchi_kalaichorkal.jsonl',
+      '18_thirukkural_iyal3.jsonl',
+    ];
+
+    let total7thTerm1 = 0;
+    for (const file of lessonFiles) {
+      const p = path.resolve(__dirname, `../../../data/questions/tamil/7th_term1/${file}`);
+      expect(fs.existsSync(p), `File ${file} should exist`).toBe(true);
+      const content = fs.readFileSync(p, 'utf-8');
+      const questions = parseJsonLines(content);
+      total7thTerm1 += questions.length;
+    }
+
+    expect(total7thTerm1).toBe(245); // 66 (Unit 1) + 74 (Unit 2) + 105 (Unit 3) = 245
+  });
+});
