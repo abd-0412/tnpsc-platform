@@ -1199,3 +1199,130 @@ describe('7th Std Tamil Term 3 Unit 1 Question Bank Validation (72 Questions)', 
     expect(totalLessonQuestions).toBe(72);
   });
 });
+
+describe('7th Std Tamil Term 3 Unit 2 Question Bank Validation (41 Questions)', () => {
+  const filePath = path.resolve(__dirname, '../../../data/questions/tamil/7th_term3_unit2.jsonl');
+
+  it('successfully reads and parses all 41 questions skipping comment headers', () => {
+    expect(fs.existsSync(filePath)).toBe(true);
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const questions = parseJsonLines(content);
+
+    expect(questions).toHaveLength(41);
+  });
+
+  it('validates that every single question in 7th Term 3 Unit 2 passes kind & structured validation', () => {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const questions = parseJsonLines(content);
+
+    for (const q of questions) {
+      const res = validateQuestion(q);
+      if (!res.valid) {
+        console.error(`Validation failed for question ${q.id}:`, res.errors);
+      }
+      expect(res.valid, `Question ${q.id} should be valid`).toBe(true);
+      expect(res.errors).toHaveLength(0);
+
+      const parityRes = validateBilingualParity(q);
+      expect(parityRes.valid, `Parity check for ${q.id}`).toBe(true);
+    }
+  });
+
+  it('verifies all 1075 questions across 6th Standard Tamil (544), 7th Term 1 (245), 7th Term 2 (173), and 7th Term 3 (Units 1-2: 113) have unique IDs', () => {
+    const t1u1 = fs.readFileSync(path.resolve(__dirname, '../../../data/questions/tamil/6th_term1_unit1.jsonl'), 'utf-8');
+    const t1u2 = fs.readFileSync(path.resolve(__dirname, '../../../data/questions/tamil/6th_term1_unit2.jsonl'), 'utf-8');
+    const t1u3 = fs.readFileSync(path.resolve(__dirname, '../../../data/questions/tamil/6th_term1_unit3.jsonl'), 'utf-8');
+    const t2u1 = fs.readFileSync(path.resolve(__dirname, '../../../data/questions/tamil/6th_term2_unit1.jsonl'), 'utf-8');
+    const t2u2 = fs.readFileSync(path.resolve(__dirname, '../../../data/questions/tamil/6th_term2_unit2.jsonl'), 'utf-8');
+    const t3u1 = fs.readFileSync(path.resolve(__dirname, '../../../data/questions/tamil/6th_term3_unit1.jsonl'), 'utf-8');
+    const t3u2 = fs.readFileSync(path.resolve(__dirname, '../../../data/questions/tamil/6th_term3_unit2.jsonl'), 'utf-8');
+    const t3u3 = fs.readFileSync(path.resolve(__dirname, '../../../data/questions/tamil/6th_term3_unit3.jsonl'), 'utf-8');
+    const t7t1u1 = fs.readFileSync(path.resolve(__dirname, '../../../data/questions/tamil/7th_term1_unit1.jsonl'), 'utf-8');
+    const t7t1u2 = fs.readFileSync(path.resolve(__dirname, '../../../data/questions/tamil/7th_term1_unit2.jsonl'), 'utf-8');
+    const t7t1u3 = fs.readFileSync(path.resolve(__dirname, '../../../data/questions/tamil/7th_term1_unit3.jsonl'), 'utf-8');
+    const t7t2u1 = fs.readFileSync(path.resolve(__dirname, '../../../data/questions/tamil/7th_term2_unit1.jsonl'), 'utf-8');
+    const t7t2u2 = fs.readFileSync(path.resolve(__dirname, '../../../data/questions/tamil/7th_term2_unit2.jsonl'), 'utf-8');
+    const t7t3u1 = fs.readFileSync(path.resolve(__dirname, '../../../data/questions/tamil/7th_term3_unit1.jsonl'), 'utf-8');
+    const t7t3u2 = fs.readFileSync(filePath, 'utf-8');
+
+    const allQuestions = [
+      ...parseJsonLines(t1u1),
+      ...parseJsonLines(t1u2),
+      ...parseJsonLines(t1u3),
+      ...parseJsonLines(t2u1),
+      ...parseJsonLines(t2u2),
+      ...parseJsonLines(t3u1),
+      ...parseJsonLines(t3u2),
+      ...parseJsonLines(t3u3),
+      ...parseJsonLines(t7t1u1),
+      ...parseJsonLines(t7t1u2),
+      ...parseJsonLines(t7t1u3),
+      ...parseJsonLines(t7t2u1),
+      ...parseJsonLines(t7t2u2),
+      ...parseJsonLines(t7t3u1),
+      ...parseJsonLines(t7t3u2),
+    ];
+
+    const idSet = new Set<string>();
+    for (const q of allQuestions) {
+      expect(idSet.has(q.id), `Duplicate question ID across platform: ${q.id}`).toBe(false);
+      idSet.add(q.id);
+
+      expect(q.source).toBeDefined();
+      expect(['book', 'past_paper', 'other']).toContain(q.source.type);
+    }
+
+    expect(allQuestions).toHaveLength(1075); // 544 (6th Std) + 245 (7th T1) + 173 (7th T2) + 72 (7th T3 Unit 1) + 41 (7th T3 Unit 2) = 1075
+  });
+
+  it('verifies all 7 lesson files in 7th Term 3 Unit 2 load correctly and sum to 41 questions', () => {
+    const lessonFiles = [
+      '06_pudhumai_vilakku.jsonl',
+      '07_aram_ennum_kadhir.jsonl',
+      '08_oppuravu_neri.jsonl',
+      '09_unmai_oli.jsonl',
+      '10_thinai_paal_idam_irattaikilavi_adukkuthodar.jsonl',
+      '11_iyal2_kalaichorkal.jsonl',
+      '12_thirukkural.jsonl',
+    ];
+
+    let totalLessonQuestions = 0;
+    for (const file of lessonFiles) {
+      const p = path.resolve(__dirname, `../../../data/questions/tamil/7th_term3/${file}`);
+      expect(fs.existsSync(p), `File ${file} should exist`).toBe(true);
+      const content = fs.readFileSync(p, 'utf-8');
+      const questions = parseJsonLines(content);
+      totalLessonQuestions += questions.length;
+    }
+
+    expect(totalLessonQuestions).toBe(41);
+  });
+
+  it('verifies all 12 lesson files across 7th Term 3 (Units 1 and 2) load correctly and sum to 113 questions', () => {
+    const allLessonFiles = [
+      '01_virunthombal.jsonl',
+      '02_thikkellam_pugazhurum_thirunelveli.jsonl',
+      '03_thirunelveli_seemaiyum_kavigalum.jsonl',
+      '04_vazhakku_poligal.jsonl',
+      '05_iyal1_mozhipayirchi_kalaichorkal.jsonl',
+      '06_pudhumai_vilakku.jsonl',
+      '07_aram_ennum_kadhir.jsonl',
+      '08_oppuravu_neri.jsonl',
+      '09_unmai_oli.jsonl',
+      '10_thinai_paal_idam_irattaikilavi_adukkuthodar.jsonl',
+      '11_iyal2_kalaichorkal.jsonl',
+      '12_thirukkural.jsonl',
+    ];
+
+    let totalQuestions = 0;
+    for (const file of allLessonFiles) {
+      const p = path.resolve(__dirname, `../../../data/questions/tamil/7th_term3/${file}`);
+      expect(fs.existsSync(p), `File ${file} should exist`).toBe(true);
+      const content = fs.readFileSync(p, 'utf-8');
+      const questions = parseJsonLines(content);
+      totalQuestions += questions.length;
+    }
+
+    expect(totalQuestions).toBe(113); // 72 (Unit 1) + 41 (Unit 2) = 113
+  });
+});
