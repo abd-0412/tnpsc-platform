@@ -2137,15 +2137,15 @@ describe('8th Std Tamil Term 6 Unit 1 Question Bank Validation (50 Questions)', 
   });
 });
 
-describe('8th Std Tamil Term 7 Unit 1 Question Bank Validation (28 Questions)', () => {
+describe('8th Std Tamil Term 7 Unit 1 Question Bank Validation (32 Questions)', () => {
   const filePath = path.resolve(__dirname, '../../../data/questions/tamil/8th_term7_unit1.jsonl');
 
-  it('successfully reads and parses all 28 questions skipping comment headers', () => {
+  it('successfully reads and parses all 32 questions skipping comment headers', () => {
     expect(fs.existsSync(filePath)).toBe(true);
     const content = fs.readFileSync(filePath, 'utf-8');
     const questions = parseJsonLines(content);
 
-    expect(questions).toHaveLength(28);
+    expect(questions).toHaveLength(32);
   });
 
   it('validates that every single question in 8th Term 7 Unit 1 passes kind & structured validation', () => {
@@ -2165,7 +2165,7 @@ describe('8th Std Tamil Term 7 Unit 1 Question Bank Validation (28 Questions)', 
     }
   });
 
-  it('verifies all 1525 questions across 6th Std (544), 7th Std (573), 8th Term 1 (66), 8th Term 2 (78), 8th Term 3 (62), 8th Term 4 (72), 8th Term 5 (52), 8th Term 6 (50), and 8th Term 7 (28) have unique IDs across the platform', () => {
+  it('verifies all 1529 questions across 6th Std (544), 7th Std (573), 8th Term 1 (66), 8th Term 2 (78), 8th Term 3 (62), 8th Term 4 (72), 8th Term 5 (52), 8th Term 6 (50), and 8th Term 7 (32) have unique IDs across the platform', () => {
     const t1u1 = fs.readFileSync(path.resolve(__dirname, '../../../data/questions/tamil/6th_term1_unit1.jsonl'), 'utf-8');
     const t1u2 = fs.readFileSync(path.resolve(__dirname, '../../../data/questions/tamil/6th_term1_unit2.jsonl'), 'utf-8');
     const t1u3 = fs.readFileSync(path.resolve(__dirname, '../../../data/questions/tamil/6th_term1_unit3.jsonl'), 'utf-8');
@@ -2225,11 +2225,11 @@ describe('8th Std Tamil Term 7 Unit 1 Question Bank Validation (28 Questions)', 
       expect(['book', 'past_paper', 'other']).toContain(q.source.type);
     }
 
-    // Grand total: 544 (6th Std) + 573 (7th Std) + 66 (8th Term 1) + 78 (8th Term 2) + 62 (8th Term 3) + 72 (8th Term 4) + 52 (8th Term 5) + 50 (8th Term 6) + 28 (8th Term 7) = 1525
-    expect(allQuestions).toHaveLength(1525);
+    // Grand total: 544 (6th Std) + 573 (7th Std) + 66 (8th Term 1) + 78 (8th Term 2) + 62 (8th Term 3) + 72 (8th Term 4) + 52 (8th Term 5) + 50 (8th Term 6) + 32 (8th Term 7) = 1529
+    expect(allQuestions).toHaveLength(1529);
   });
 
-  it('verifies all 5 lesson files in 8th Term 7 load correctly and sum to 28 questions', () => {
+  it('verifies all 5 lesson files in 8th Term 7 load correctly and sum to 32 questions', () => {
     const lessonFiles = [
       '01_meignnaana_oli.jsonl',
       '02_ayothidhaasar_sindhanaigal.jsonl',
@@ -2247,6 +2247,6 @@ describe('8th Std Tamil Term 7 Unit 1 Question Bank Validation (28 Questions)', 
       totalLessonQuestions += questions.length;
     }
 
-    expect(totalLessonQuestions).toBe(28);
+    expect(totalLessonQuestions).toBe(32);
   });
 });
