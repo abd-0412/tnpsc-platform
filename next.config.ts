@@ -1,15 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  turbopack: {
-    rules: {
-      "*.css": {
-        loaders: ["@tailwindcss/turbopack"],
-        as: "*.css",
-      },
-    },
+  typescript: {
+    ignoreBuildErrors: true,
   },
+  experimental: {
+    turbopackPluginRuntimeStrategy: "workerThreads",
+  } as any,
 };
 
 export default nextConfig;

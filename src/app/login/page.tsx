@@ -155,7 +155,7 @@ function LoginForm() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="e.g. learner1@tnpsc.local"
+                  placeholder="name@example.com"
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-900/80 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm transition-all"
                 />
               </div>
@@ -202,55 +202,8 @@ function LoginForm() {
             </button>
           </form>
 
-          {/* Quick Demo Fill Buttons */}
-          <div className="mt-6 pt-5 border-t border-slate-700/60">
-            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block text-center mb-2.5">
-              {lang === 'ta' ? 'விரைவு உள்நுழைவு (Quick Fill)' : '1-Click Quick Fill'}
-            </span>
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setEmail('learner1@tnpsc.local');
-                  setPassword('LearnerPassword123!');
-                  setErrorMsg('');
-                }}
-                className="p-2 rounded-lg bg-slate-900 hover:bg-indigo-950/80 border border-slate-700 hover:border-indigo-500 text-xs text-slate-300 hover:text-white transition text-center"
-              >
-                <span className="block font-bold text-indigo-400">Learner 1</span>
-                <span className="text-[10px] text-slate-500">மாணவர் 1</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setEmail('learner2@tnpsc.local');
-                  setPassword('LearnerPassword123!');
-                  setErrorMsg('');
-                }}
-                className="p-2 rounded-lg bg-slate-900 hover:bg-indigo-950/80 border border-slate-700 hover:border-indigo-500 text-xs text-slate-300 hover:text-white transition text-center"
-              >
-                <span className="block font-bold text-indigo-400">Learner 2</span>
-                <span className="text-[10px] text-slate-500">மாணவர் 2</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setEmail('admin@tnpsc.local');
-                  setPassword('AdminPassword123!');
-                  setErrorMsg('');
-                }}
-                className="p-2 rounded-lg bg-slate-900 hover:bg-amber-950/80 border border-slate-700 hover:border-amber-500 text-xs text-slate-300 hover:text-white transition text-center"
-              >
-                <span className="block font-bold text-amber-400">Admin</span>
-                <span className="text-[10px] text-slate-500">நிர்வாகி</span>
-              </button>
-            </div>
-          </div>
-
           {/* Privacy Note */}
-          <div className="mt-5 pt-4 border-t border-slate-700/50 flex items-center justify-center space-x-2 text-xs text-slate-400">
+          <div className="mt-6 pt-5 border-t border-slate-700/50 flex items-center justify-center space-x-2 text-xs text-slate-400">
             <Shield className="w-4 h-4 text-emerald-400" />
             <span>
               {lang === 'ta'
