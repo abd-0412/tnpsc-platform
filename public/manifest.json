@@ -1,0 +1,54 @@
+{
+  "name": "TNPSC Smart Prep | தமிழ்நாடு அரசுப் பணியாளர் தேர்வு தளம்",
+  "short_name": "TNPSC Prep",
+  "description": "Bilingual, Offline-Ready Examination Preparation System for TNPSC Group 4, VAO, Group 2 & 2A",
+  "start_url": "/learner",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#020617",
+  "theme_color": "#0f172a",
+  "categories": ["education", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Practice Centre",
+      "short_name": "Practice",
+      "description": "Immediate Practice with Explanations",
+      "url": "/learner/practice",
+      "icons": [{ "src": "/icons/icon-192.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Revision Capsules",
+      "short_name": "Capsules",
+      "description": "High-Yield 3D Flashcards & Summaries",
+      "url": "/learner/capsules",
+      "icons": [{ "src": "/icons/icon-192.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Offline Centre",
+      "short_name": "Offline",
+      "description": "Downloaded Tests & Offline Papers",
+      "url": "/learner/offline",
+      "icons": [{ "src": "/icons/icon-192.svg", "sizes": "192x192" }]
+    }
+  ]
+}
