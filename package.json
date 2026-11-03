@@ -2,6 +2,7 @@
   "name": "tnpsc-platform",
   "version": "0.1.0",
   "private": true,
+  "author": "abd-0412 <abdajees01@gmail.com>",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
