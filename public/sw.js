@@ -1,5 +1,5 @@
 // TNPSC Smart Prep - Service Worker (Phase 13: Offline Study Engine)
-const CACHE_NAME = 'tnpsc-prep-v1.0.0';
+const CACHE_NAME = 'tnpsc-prep-v1.0.1';
 const STATIC_ASSETS = [
   '/',
   '/learner',
@@ -25,14 +25,14 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// Activate Event: Clean up legacy caches
+// Activate Event: Clean up legacy caches immediately
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
         keys.map((key) => {
           if (key !== CACHE_NAME) {
-            console.log('[SW] Removing old cache:', key);
+            console.log('[SW] Purging outdated cache:', key);
             return caches.delete(key);
           }
         })
@@ -52,9 +52,26 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 1. Static Assets (JS chunks, CSS, fonts, images) -> Cache-First with revalidation
+  // 1. Next.js Static Chunks & Code: Network-First with Cache fallback to prevent hydration mismatches
+  if (url.pathname.startsWith('/_next/static')) {
+    event.respondWith(
+      fetch(request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const responseClone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(request, responseClone);
+            });
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  // 2. Media / Icons / Fonts: Cache-First with revalidation
   if (
-    url.pathname.startsWith('/_next/static') ||
     url.pathname.startsWith('/icons/') ||
     url.pathname.endsWith('.svg') ||
     url.pathname.endsWith('.png') ||
