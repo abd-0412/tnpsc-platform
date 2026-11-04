@@ -13,3 +13,4 @@ VALUES (
     '{"total_marks": 300, "duration_minutes": 180, "total_questions": 200, "negative_marking": false}'::jsonb
 )
 ON CONFLICT (id) DO UPDATE SET is_active = true;
+
