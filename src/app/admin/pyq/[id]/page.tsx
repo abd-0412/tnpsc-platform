@@ -38,7 +38,8 @@ import {
   Globe,
   ShieldCheck,
   FileCheck,
-  Info
+  Info,
+  Plus
 } from 'lucide-react';
 import QuestionDetailsModal from '@/components/admin/QuestionDetailsModal';
 import EditPaperDetailsModal from '@/components/admin/pyq/EditPaperDetailsModal';
@@ -1762,3 +1763,4 @@ export default function PaperWorkspacePage() {
     </div>
   );
 }
+
