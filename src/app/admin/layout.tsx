@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
@@ -45,6 +45,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [lang, setLang] = useState<'ta' | 'en'>('ta');
   const [roleChecking, setRoleChecking] = useState(true);
   const supabase = createClient();
+  const mainContentRef = useRef<HTMLElement>(null);
+
+  // Auto-scroll main content area to top on route change
+  useEffect(() => {
+    if (mainContentRef.current) {
+      mainContentRef.current.scrollTop = 0;
+    }
+  }, [pathname]);
 
   useEffect(() => {
     async function checkRole() {
@@ -90,9 +98,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col md:flex-row">
+    <div className="h-screen h-[100dvh] w-full overflow-hidden bg-slate-900 text-slate-100 flex flex-col md:flex-row">
       {/* Mobile Header */}
-      <header className="md:hidden flex items-center justify-between p-4 bg-slate-800 border-b border-slate-700 sticky top-0 z-50">
+      <header className="md:hidden flex items-center justify-between p-4 bg-slate-800 border-b border-slate-700 shrink-0 z-30">
         <div className="flex items-center space-x-2">
           <ShieldAlert className="w-6 h-6 text-amber-400" />
           <span className="font-bold text-sm tracking-wide">
@@ -123,61 +131,62 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         />
       )}
 
-      {/* Sidebar for Desktop & Mobile drawer */}
+      {/* Sidebar for Desktop & Mobile drawer - 100% Fixed to Left */}
       <aside
-        className={`fixed md:sticky top-0 h-screen w-64 bg-slate-800/95 backdrop-blur border-r border-slate-700 flex flex-col justify-between z-40 transition-transform duration-200 ease-in-out ${
+        className={`fixed top-0 left-0 bottom-0 h-screen h-[100dvh] w-64 bg-slate-800/95 backdrop-blur border-r border-slate-700 flex flex-col justify-between z-40 transition-transform duration-200 ease-in-out ${
           mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         }`}
       >
-        <div className="flex flex-col flex-1 overflow-y-auto">
-          {/* Brand header */}
-          <div className="p-5 border-b border-slate-700/80 flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400">
-                <ShieldAlert className="w-5 h-5" />
-              </div>
-              <div>
-                <h1 className="font-bold text-sm text-white">TNPSC Admin</h1>
-                <p className="text-xs text-slate-400">
-                  {lang === 'ta' ? 'மேலாண்மை தளம்' : 'Control Center'}
-                </p>
-              </div>
+        {/* Brand header - Fixed at top */}
+        <div className="p-5 border-b border-slate-700/80 flex items-center justify-between shrink-0">
+          <div className="flex items-center space-x-3">
+            <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400">
+              <ShieldAlert className="w-5 h-5" />
             </div>
-            <button
-              onClick={() => setLang(l => (l === 'ta' ? 'en' : 'ta'))}
-              className="hidden md:inline-flex text-xs px-2 py-1 rounded-md bg-slate-700 hover:bg-slate-600 text-slate-200 transition-colors"
-            >
-              {lang === 'ta' ? 'EN' : 'தமிழ்'}
-            </button>
+            <div>
+              <h1 className="font-bold text-sm text-white">TNPSC Admin</h1>
+              <p className="text-xs text-slate-400">
+                {lang === 'ta' ? 'மேலாண்மை தளம்' : 'Control Center'}
+              </p>
+            </div>
           </div>
+          <button
+            onClick={() => setLang(l => (l === 'ta' ? 'en' : 'ta'))}
+            className="hidden md:inline-flex text-xs px-2 py-1 rounded-md bg-slate-700 hover:bg-slate-600 text-slate-200 transition-colors"
+          >
+            {lang === 'ta' ? 'EN' : 'தமிழ்'}
+          </button>
+        </div>
 
-          {/* Navigation Links */}
-          <nav className="p-3 space-y-1 flex-1">
-            {ADMIN_NAV.map((item) => {
-              const Icon = item.icon;
-              const isActive = pathname === item.href || (item.href !== '/admin' && pathname.startsWith(item.href));
+        {/* Navigation Links - Scrollable middle section */}
+        <nav className="p-3 space-y-1 flex-1 min-h-0 overflow-y-auto">
+          {ADMIN_NAV.map((item) => {
+            const Icon = item.icon;
+            const isActive = pathname === item.href || (item.href !== '/admin' && pathname.startsWith(item.href));
 
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all ${
-                    isActive
-                      ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'
-                  }`}
-                >
-                  <div className="flex items-center space-x-3">
-                    <Icon className={`w-4 h-4 ${isActive ? 'text-amber-400' : 'text-slate-400'}`} />
-                    <span>{lang === 'ta' ? item.labelTa : item.labelEn}</span>
-                  </div>
-                  {isActive && <ChevronRight className="w-3.5 h-3.5 text-amber-400" />}
-                </Link>
-              );
-            })}
-          </nav>
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setMobileMenuOpen(false)}
+                className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all ${
+                  isActive
+                    ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'
+                }`}
+              >
+                <div className="flex items-center space-x-3">
+                  <Icon className={`w-4 h-4 ${isActive ? 'text-amber-400' : 'text-slate-400'}`} />
+                  <span>{lang === 'ta' ? item.labelTa : item.labelEn}</span>
+                </div>
+                {isActive && <ChevronRight className="w-3.5 h-3.5 text-amber-400" />}
+              </Link>
+            );
+          })}
+        </nav>
 
+        {/* Bottom Actions - Fixed at bottom */}
+        <div className="shrink-0">
           {/* Switch to Learner view (Admin can attend tests too) */}
           <div className="p-3 border-t border-slate-700/80">
             <Link
@@ -188,22 +197,25 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <span>{lang === 'ta' ? 'மாணவர் பார்வை' : 'Switch to Learner View'}</span>
             </Link>
           </div>
-        </div>
 
-        {/* Footer with logout */}
-        <div className="p-3 border-t border-slate-700/80">
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-xs font-medium text-red-400 hover:bg-red-500/10 transition-all cursor-pointer"
-          >
-            <LogOut className="w-4 h-4" />
-            <span>{lang === 'ta' ? 'வெளியேறு' : 'Sign Out'}</span>
-          </button>
+          {/* Footer with logout */}
+          <div className="p-3 border-t border-slate-700/80">
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-xs font-medium text-red-400 hover:bg-red-500/10 transition-all cursor-pointer"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>{lang === 'ta' ? 'வெளியேறு' : 'Sign Out'}</span>
+            </button>
+          </div>
         </div>
       </aside>
 
-      {/* Main Content Area */}
-      <main className="flex-1 min-w-0 max-w-full p-3 sm:p-5 lg:p-8 overflow-x-hidden space-y-4">
+      {/* Main Content Area - Independently scrollable */}
+      <main
+        ref={mainContentRef}
+        className="flex-1 min-w-0 min-h-0 md:ml-64 h-full overflow-y-auto overflow-x-hidden p-3 sm:p-5 lg:p-8 space-y-4"
+      >
         {children}
       </main>
     </div>
