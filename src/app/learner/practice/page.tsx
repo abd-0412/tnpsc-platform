@@ -141,6 +141,7 @@ function PracticeSession() {
   const [selectedClass, setSelectedClass] = useState<string>('all');
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('all');
   const [pyqOnly, setPyqOnly] = useState<boolean>(false);
+  const [limitChoice, setLimitChoice] = useState<string>('all');
 
   // Session States
   const [questions, setQuestions] = useState<QuestionItem[]>([]);
@@ -175,7 +176,7 @@ function PracticeSession() {
       if (selectedClass !== 'all') params.set('class', selectedClass);
       if (selectedDifficulty !== 'all') params.set('difficulty', selectedDifficulty);
       if (pyqOnly) params.set('pyqOnly', 'true');
-      params.set('limit', '30');
+      params.set('limit', limitChoice);
 
       const res = await fetch(`/api/learner/practice?${params.toString()}`);
       const data = await res.json();
@@ -196,7 +197,7 @@ function PracticeSession() {
     } finally {
       setLoading(false);
     }
-  }, [nodeIdParam, selectedSubject, selectedClass, selectedDifficulty, pyqOnly]);
+  }, [nodeIdParam, selectedSubject, selectedClass, selectedDifficulty, pyqOnly, limitChoice]);
 
   useEffect(() => {
     loadQuestions();
@@ -405,8 +406,29 @@ function PracticeSession() {
           </div>
         </div>
 
+        {/* Active Node Banner */}
+        {nodeTitleParam && (
+          <div className="flex items-center justify-between gap-2 px-3.5 py-2 rounded-xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-200 text-xs font-tamil">
+            <div className="flex items-center space-x-2 min-w-0">
+              <span className="w-2 h-2 rounded-full bg-indigo-400 shrink-0 animate-pulse" />
+              <span className="truncate">
+                {t('தேர்ந்தெடுக்கப்பட்ட அலகு / பாடம்:', 'Active Syllabus Node:')} <strong>{nodeTitleParam}</strong>
+              </span>
+              <span className="text-indigo-400 font-mono text-[11px] shrink-0 font-bold">
+                ({questions.length} {t('வினாக்கள்', 'questions')})
+              </span>
+            </div>
+            <Link
+              href="/learner/practice"
+              className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-indigo-900/60 hover:bg-indigo-900 text-indigo-300 hover:text-white text-[11px] font-bold border border-indigo-700/50 shrink-0 transition"
+            >
+              <span>{t('முழு வினா வங்கி', 'All Bank')}</span>
+            </Link>
+          </div>
+        )}
+
         {/* Filter Dropdowns */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
           <div>
             <label className="text-[11px] font-semibold text-slate-400 block mb-1">
               {t('பாடம்', 'Subject')}
@@ -462,6 +484,23 @@ function PracticeSession() {
 
           <div>
             <label className="text-[11px] font-semibold text-slate-400 block mb-1">
+              {t('வினாக்கள் எண்ணிக்கை', 'Question Count')}
+            </label>
+            <select
+              value={limitChoice}
+              onChange={(e) => setLimitChoice(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-semibold"
+            >
+              <option value="all">{t('முழுவதும் (அனைத்து வினாக்களும்)', 'All Questions (Full)')}</option>
+              <option value="25">{t('25 வினாக்கள் (Quick 25)', '25 Questions')}</option>
+              <option value="50">{t('50 வினாக்கள் (Standard 50)', '50 Questions')}</option>
+              <option value="84">{t('84 வினாக்கள் (முழு அலகு / Iyal)', '84 Questions')}</option>
+              <option value="100">{t('100 வினாக்கள் (100 Questions)', '100 Questions')}</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="text-[11px] font-semibold text-slate-400 block mb-1">
               {t('வினா வடிகட்டி', 'Question Filter')}
             </label>
             <button
@@ -499,6 +538,7 @@ function PracticeSession() {
               setSelectedClass('all');
               setSelectedDifficulty('all');
               setPyqOnly(false);
+              setLimitChoice('all');
             }}
             className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition cursor-pointer"
           >

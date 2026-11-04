@@ -170,7 +170,8 @@ export async function POST(request: NextRequest) {
         .select('*')
         .eq('is_archived', false)
         .or(`syllabus->>lesson_id.eq.${syllabus_node_id},syllabus->>unit_id.eq.${syllabus_node_id},syllabus->>term_id.eq.${syllabus_node_id},syllabus->>class_id.eq.${syllabus_node_id}`)
-        .limit(100);
+        .order('id', { ascending: true })
+        .limit(500);
 
       if (qErr) {
         return NextResponse.json({ error: qErr.message }, { status: 500 });

@@ -36,7 +36,14 @@ export async function GET(request: NextRequest) {
     const kind = searchParams.get('kind') || 'all';
     const nodeId = searchParams.get('nodeId') || '';
     const pyqOnly = searchParams.get('pyqOnly') === 'true';
-    const limit = Math.min(100, Math.max(5, parseInt(searchParams.get('limit') || '30', 10)));
+    const limitParam = searchParams.get('limit');
+    let limit = 500;
+    if (limitParam && limitParam !== 'all') {
+      const parsed = parseInt(limitParam, 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        limit = Math.min(500, parsed);
+      }
+    }
 
     let query = supabase
       .from('questions')
@@ -70,7 +77,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    query = query.order('created_at', { ascending: false }).limit(limit);
+    query = query.order('id', { ascending: true }).limit(limit);
 
     const { data: questions, error } = await query;
 
