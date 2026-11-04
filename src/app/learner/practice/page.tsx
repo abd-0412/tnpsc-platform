@@ -30,6 +30,12 @@ interface QuestionItem {
   kind?: string;
   difficulty?: string;
   subject?: string;
+  previous_year?: {
+    is_pyq?: boolean;
+    is_previous_year?: boolean;
+    exam_name?: string;
+    year?: string | number;
+  };
   texts: {
     ta: {
       question?: string;
@@ -134,6 +140,7 @@ function PracticeSession() {
   const [selectedSubject, setSelectedSubject] = useState<string>('all');
   const [selectedClass, setSelectedClass] = useState<string>('all');
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('all');
+  const [pyqOnly, setPyqOnly] = useState<boolean>(false);
 
   // Session States
   const [questions, setQuestions] = useState<QuestionItem[]>([]);
@@ -165,8 +172,9 @@ function PracticeSession() {
       const params = new URLSearchParams();
       if (nodeIdParam) params.set('nodeId', nodeIdParam);
       if (selectedSubject !== 'all') params.set('subject', selectedSubject);
-      if (selectedClass !== 'all') params.set('standard', selectedClass);
+      if (selectedClass !== 'all') params.set('class', selectedClass);
       if (selectedDifficulty !== 'all') params.set('difficulty', selectedDifficulty);
+      if (pyqOnly) params.set('pyqOnly', 'true');
       params.set('limit', '30');
 
       const res = await fetch(`/api/learner/practice?${params.toString()}`);
@@ -188,7 +196,7 @@ function PracticeSession() {
     } finally {
       setLoading(false);
     }
-  }, [nodeIdParam, selectedSubject, selectedClass, selectedDifficulty]);
+  }, [nodeIdParam, selectedSubject, selectedClass, selectedDifficulty, pyqOnly]);
 
   useEffect(() => {
     loadQuestions();
@@ -398,7 +406,7 @@ function PracticeSession() {
         </div>
 
         {/* Filter Dropdowns */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
           <div>
             <label className="text-[11px] font-semibold text-slate-400 block mb-1">
               {t('பாடம்', 'Subject')}
@@ -451,6 +459,24 @@ function PracticeSession() {
               <option value="hard">{t('கடினம் (Hard)', 'Hard')}</option>
             </select>
           </div>
+
+          <div>
+            <label className="text-[11px] font-semibold text-slate-400 block mb-1">
+              {t('வினா வடிகட்டி', 'Question Filter')}
+            </label>
+            <button
+              type="button"
+              onClick={() => setPyqOnly(!pyqOnly)}
+              className={`w-full py-1.5 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-1.5 cursor-pointer ${
+                pyqOnly
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50 shadow-sm shadow-amber-500/20'
+                  : 'bg-slate-800 border border-slate-700 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Sparkles className={`w-3.5 h-3.5 ${pyqOnly ? 'text-amber-400 fill-amber-400' : 'text-slate-400'}`} />
+              <span>{pyqOnly ? t('⭐ PYQ மட்டும் (Active)', '⭐ PYQs Only (Active)') : t('அனைத்து வினாக்கள்', 'All Questions')}</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -472,6 +498,7 @@ function PracticeSession() {
               setSelectedSubject('all');
               setSelectedClass('all');
               setSelectedDifficulty('all');
+              setPyqOnly(false);
             }}
             className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition cursor-pointer"
           >
@@ -560,6 +587,15 @@ function PracticeSession() {
                 {currentQ.syllabus?.subject_id && (
                   <span className="text-[10px] text-slate-500 font-mono hidden sm:inline">
                     • {currentQ.syllabus.subject_id}
+                  </span>
+                )}
+                {(currentQ.previous_year?.is_pyq || currentQ.previous_year?.is_previous_year || currentQ.id.includes('pyq')) && (
+                  <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/40 text-amber-300 font-bold text-[10px] sm:text-[11px] shadow-sm">
+                    <Sparkles className="w-3 h-3 text-amber-400 fill-amber-400 shrink-0" />
+                    <span>
+                      TNPSC {currentQ.previous_year?.exam_name ? currentQ.previous_year.exam_name.toUpperCase().replace('_', ' ') : 'Group 4'}
+                      {currentQ.previous_year?.year ? ` (${currentQ.previous_year.year})` : ''} PYQ
+                    </span>
                   </span>
                 )}
               </div>

@@ -92,7 +92,12 @@ export default function LearnerTestsPage() {
   };
 
   const filteredTests = tests.filter((t) => {
-    const matchesCategory = categoryFilter === 'all' || t.category === categoryFilter;
+    const matchesCategory =
+      categoryFilter === 'all'
+        ? true
+        : categoryFilter === 'pyq'
+        ? t.title_en?.toLowerCase().includes('pyq') || t.title_ta?.includes('முந்தைய') || t.id?.includes('PYQ')
+        : t.category === categoryFilter;
     const matchesSearch =
       t.title_ta.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.title_en.toLowerCase().includes(searchQuery.toLowerCase());
@@ -147,6 +152,7 @@ export default function LearnerTestsPage() {
         <div className="flex items-center space-x-1.5 overflow-x-auto scrollbar-none max-w-full pb-1 sm:pb-0 w-full sm:w-auto">
           {[
             { id: 'all', ta: 'அனைத்து தேர்வுகள்', en: 'All Papers' },
+            { id: 'pyq', ta: '⭐ முந்தைய ஆண்டு வினாக்கள் (PYQ)', en: '⭐ PYQ Papers' },
             { id: 'unit_quiz', ta: 'அலகுத் தேர்வுகள்', en: 'Unit Quizzes' },
             { id: 'full_mock', ta: 'முழு மாதிரித் தேர்வு', en: 'Full Mocks' },
             { id: 'part_test', ta: 'பகுதித் தேர்வுகள்', en: 'Part Tests' },
@@ -212,9 +218,17 @@ export default function LearnerTestsPage() {
               >
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <span className="text-[10px] font-mono uppercase bg-slate-800 text-indigo-400 px-2.5 py-0.5 rounded border border-indigo-500/20">
-                      {test.category.replace(/_/g, ' ')}
-                    </span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] font-mono uppercase bg-slate-800 text-indigo-400 px-2.5 py-0.5 rounded border border-indigo-500/20">
+                        {test.category.replace(/_/g, ' ')}
+                      </span>
+                      {(test.title_en?.toLowerCase().includes('pyq') || test.id?.includes('PYQ')) && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-300 bg-amber-500/15 px-2 py-0.5 rounded-full border border-amber-500/30">
+                          <Sparkles className="w-3 h-3 text-amber-400 fill-amber-400" />
+                          <span>PYQ Master</span>
+                        </span>
+                      )}
+                    </div>
                     {test.user_status === 'in_progress' && (
                       <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
                         <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />

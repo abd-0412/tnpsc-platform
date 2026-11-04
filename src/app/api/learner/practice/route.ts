@@ -35,13 +35,18 @@ export async function GET(request: NextRequest) {
     const difficulty = searchParams.get('difficulty') || 'all';
     const kind = searchParams.get('kind') || 'all';
     const nodeId = searchParams.get('nodeId') || '';
+    const pyqOnly = searchParams.get('pyqOnly') === 'true';
     const limit = Math.min(100, Math.max(5, parseInt(searchParams.get('limit') || '30', 10)));
 
     let query = supabase
       .from('questions')
-      .select('id, kind, level, difficulty, syllabus, texts, answer, question_data, source, tags, workflow')
+      .select('id, kind, level, difficulty, syllabus, texts, answer, question_data, source, previous_year, tags, workflow')
       .eq('is_archived', false)
       .eq('workflow->>status', 'published');
+
+    if (pyqOnly) {
+      query = query.or('previous_year->>is_pyq.eq.true,previous_year->>is_previous_year.eq.true');
+    }
 
     if (subject !== 'all') {
       query = query.eq('syllabus->>subject_id', subject);
