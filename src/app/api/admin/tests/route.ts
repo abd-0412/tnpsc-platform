@@ -76,6 +76,8 @@ export async function POST(request: NextRequest) {
       title_ta,
       category,
       exam_id,
+      exam_scope = 'selected',
+      exam_ids = [],
       duration_minutes,
       total_marks,
       negative_marking_rate,
@@ -91,6 +93,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Resolve multi-exam mapping
+    let resolvedExamScope = exam_scope === 'all_groups' ? 'all_groups' : 'selected';
+    let resolvedExamIds = Array.isArray(exam_ids) && exam_ids.length > 0 ? exam_ids : (exam_id ? [exam_id] : ['group_4']);
+    
+    // If all_groups, fetch all active exam IDs from DB
+    if (resolvedExamScope === 'all_groups') {
+      const { data: dbExams } = await supabase.from('exams').select('id').eq('is_active', true);
+      if (dbExams && dbExams.length > 0) {
+        resolvedExamIds = dbExams.map((e) => e.id);
+      }
+    }
+
+    const primaryExamId = resolvedExamIds[0] || exam_id || 'group_4';
     const templateId = id || `TEST-${Date.now().toString(36).toUpperCase()}`;
 
     const { data: newTemplate, error } = await supabase
@@ -100,13 +115,22 @@ export async function POST(request: NextRequest) {
         title_en,
         title_ta,
         category,
-        exam_id: exam_id || null,
+        exam_id: primaryExamId,
+        exam_scope: resolvedExamScope,
+        exam_ids: resolvedExamIds,
         duration_minutes: duration_minutes || 60,
         total_marks: total_marks || (question_ids?.length ? question_ids.length * 1.5 : 100),
         negative_marking_rate: negative_marking_rate ?? 0.0,
         question_count: question_ids?.length || 0,
         question_ids: question_ids || [],
-        rules: rules || { randomize_questions: false, randomize_options: false, allow_language_toggle: true },
+        rules: {
+          ...(rules || {}),
+          exam_scope: resolvedExamScope,
+          exam_ids: resolvedExamIds,
+          randomize_questions: rules?.randomize_questions ?? false,
+          randomize_options: rules?.randomize_options ?? false,
+          allow_language_toggle: rules?.allow_language_toggle ?? true,
+        },
         is_published: is_published ?? false,
       })
       .select()

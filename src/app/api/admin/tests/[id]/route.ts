@@ -89,6 +89,8 @@ export async function PUT(
       title_ta,
       category,
       exam_id,
+      exam_scope,
+      exam_ids,
       duration_minutes,
       total_marks,
       negative_marking_rate,
@@ -104,7 +106,30 @@ export async function PUT(
     if (title_en !== undefined) updatePayload.title_en = title_en;
     if (title_ta !== undefined) updatePayload.title_ta = title_ta;
     if (category !== undefined) updatePayload.category = category;
-    if (exam_id !== undefined) updatePayload.exam_id = exam_id || null;
+
+    if (exam_scope !== undefined) {
+      updatePayload.exam_scope = exam_scope === 'all_groups' ? 'all_groups' : 'selected';
+      if (exam_scope === 'all_groups') {
+        const { data: dbExams } = await supabase.from('exams').select('id').eq('is_active', true);
+        const allExamIds = dbExams && dbExams.length > 0 ? dbExams.map((e) => e.id) : ['group_1', 'group_2', 'group_2a', 'group_4'];
+        updatePayload.exam_ids = allExamIds;
+        updatePayload.exam_id = exam_id || allExamIds[0] || 'group_4';
+      }
+    }
+
+    if (exam_ids !== undefined && exam_scope !== 'all_groups') {
+      const arr = Array.isArray(exam_ids) ? exam_ids : [];
+      updatePayload.exam_ids = arr;
+      if (arr.length > 0) {
+        updatePayload.exam_id = arr[0];
+      }
+    } else if (exam_id !== undefined && exam_scope !== 'all_groups') {
+      updatePayload.exam_id = exam_id || null;
+      if (exam_id && (!exam_ids || exam_ids.length === 0)) {
+        updatePayload.exam_ids = [exam_id];
+      }
+    }
+
     if (duration_minutes !== undefined) updatePayload.duration_minutes = duration_minutes;
     if (total_marks !== undefined) updatePayload.total_marks = total_marks;
     if (negative_marking_rate !== undefined) updatePayload.negative_marking_rate = negative_marking_rate;
@@ -112,7 +137,13 @@ export async function PUT(
       updatePayload.question_ids = question_ids;
       updatePayload.question_count = question_ids.length;
     }
-    if (rules !== undefined) updatePayload.rules = rules;
+    if (rules !== undefined) {
+      updatePayload.rules = {
+        ...(rules || {}),
+        exam_scope: updatePayload.exam_scope || rules.exam_scope,
+        exam_ids: updatePayload.exam_ids || rules.exam_ids,
+      };
+    }
     if (is_published !== undefined) updatePayload.is_published = is_published;
 
     const { data: updated, error } = await supabase

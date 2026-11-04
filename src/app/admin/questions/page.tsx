@@ -21,12 +21,14 @@ import {
   RotateCcw,
   ShieldCheck,
   X,
+  XCircle,
   History
 } from 'lucide-react';
 import { Question } from '@/lib/types/question';
 import QuestionDetailsModal from '@/components/admin/QuestionDetailsModal';
 import DeleteConfirmModal from '@/components/admin/DeleteConfirmModal';
 import RestoreModal from '@/components/admin/RestoreModal';
+import RejectionModal from '@/components/admin/RejectionModal';
 
 export default function QuestionBankPage() {
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -34,8 +36,8 @@ export default function QuestionBankPage() {
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  // Tab: 'active' | 'archived' | 'deleted'
-  const [activeTab, setActiveTab] = useState<'active' | 'archived' | 'deleted'>('active');
+  // Tab: 'active' | 'rejected' | 'archived' | 'deleted'
+  const [activeTab, setActiveTab] = useState<'active' | 'rejected' | 'archived' | 'deleted'>('active');
 
   // Filters
   const [search, setSearch] = useState('');
@@ -61,9 +63,17 @@ export default function QuestionBankPage() {
   // Dynamic Subjects from Syllabus API
   const [subjects, setSubjects] = useState<Array<{ id: string; title_ta: string; title_en: string }>>([]);
 
-  // Multi-select bulk state
+  // Universal Selection State
+  const [selectionMode, setSelectionMode] = useState<'page' | 'all_matching'>('page');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deselectedIds, setDeselectedIds] = useState<Set<string>>(new Set());
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+
+  // Effective selected count across all pages
+  const effectiveSelectedCount =
+    selectionMode === 'all_matching'
+      ? Math.max(0, totalQuestions - deselectedIds.size)
+      : selectedIds.size;
 
   // Modals state
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
@@ -75,6 +85,9 @@ export default function QuestionBankPage() {
 
   const [restoreModalOpen, setRestoreModalOpen] = useState(false);
   const [restoreTargetIds, setRestoreTargetIds] = useState<string[]>([]);
+
+  const [rejectionModalOpen, setRejectionModalOpen] = useState(false);
+  const [rejectionTargetIds, setRejectionTargetIds] = useState<string[]>([]);
 
   // 1. Fetch Subjects once
   useEffect(() => {
@@ -117,7 +130,9 @@ export default function QuestionBankPage() {
       if (data.counts) {
         setCounts(data.counts);
       }
-      setSelectedIds(new Set());
+      if (selectionMode !== 'all_matching') {
+        setSelectedIds(new Set());
+      }
     } catch (err: any) {
       setErrorMsg(err.message);
     } finally {
@@ -133,23 +148,65 @@ export default function QuestionBankPage() {
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setPage(1);
+    handleClearSelection();
     fetchQuestions();
   };
 
+  const handleTabChange = (tab: 'active' | 'rejected' | 'archived' | 'deleted') => {
+    setActiveTab(tab);
+    setPage(1);
+    handleClearSelection();
+  };
+
   // Selection handlers
+  const isQuestionSelected = (id: string) => {
+    if (selectionMode === 'all_matching') {
+      return !deselectedIds.has(id);
+    }
+    return selectedIds.has(id);
+  };
+
   const handleToggleSelect = (id: string) => {
-    const next = new Set(selectedIds);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSelectedIds(next);
+    if (selectionMode === 'all_matching') {
+      const next = new Set(deselectedIds);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      setDeselectedIds(next);
+    } else {
+      const next = new Set(selectedIds);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      setSelectedIds(next);
+    }
   };
 
   const handleSelectAllOnPage = () => {
-    if (selectedIds.size === questions.length) {
-      setSelectedIds(new Set());
+    if (selectionMode === 'all_matching') {
+      handleClearSelection();
     } else {
-      setSelectedIds(new Set(questions.map((q) => q.id)));
+      const pageIds = questions.map((q) => q.id);
+      const allSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id));
+      if (allSelected) {
+        const next = new Set(selectedIds);
+        pageIds.forEach((id) => next.delete(id));
+        setSelectedIds(next);
+      } else {
+        const next = new Set(selectedIds);
+        pageIds.forEach((id) => next.add(id));
+        setSelectedIds(next);
+      }
     }
+  };
+
+  const handleSelectAllMatching = () => {
+    setSelectionMode('all_matching');
+    setDeselectedIds(new Set());
+  };
+
+  const handleClearSelection = () => {
+    setSelectionMode('page');
+    setSelectedIds(new Set());
+    setDeselectedIds(new Set());
   };
 
   // Individual Actions
@@ -176,31 +233,55 @@ export default function QuestionBankPage() {
     }
   };
 
-  const openDeleteModal = (ids: string[], permanent = false) => {
+  const openDeleteModal = (ids: string[] = [], permanent = false) => {
     setDeleteTargetIds(ids);
     setDeleteIsPermanent(permanent);
     setDeleteModalOpen(true);
   };
 
-  const openRestoreModal = (ids: string[]) => {
+  const openRestoreModal = (ids: string[] = []) => {
     setRestoreTargetIds(ids);
     setRestoreModalOpen(true);
+  };
+
+  const openRejectionModal = (ids: string[] = []) => {
+    setRejectionTargetIds(ids);
+    setRejectionModalOpen(true);
   };
 
   // Execute Deletion from Modal
   const executeDelete = async (reason: string, permanent: boolean) => {
     setIsBulkProcessing(true);
     try {
+      const isExplicitSingle = deleteTargetIds.length > 0;
       const action = permanent ? 'permanent_delete' : 'soft_delete';
+      const payload: any = {
+        action,
+        reason,
+        selectAllMatching: !isExplicitSingle && selectionMode === 'all_matching',
+        filters: !isExplicitSingle && selectionMode === 'all_matching' ? {
+          tab: activeTab,
+          q: search,
+          subject,
+          difficulty,
+          kind,
+          status: activeTab === 'active' ? status : undefined,
+        } : undefined,
+        excludedIds: !isExplicitSingle && selectionMode === 'all_matching' ? Array.from(deselectedIds) : undefined,
+        questionIds: isExplicitSingle ? deleteTargetIds : (selectionMode === 'page' ? Array.from(selectedIds) : undefined),
+      };
+
       const res = await fetch('/api/admin/questions/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, questionIds: deleteTargetIds, reason }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to delete question(s)');
 
       setDeleteModalOpen(false);
+      setDeleteTargetIds([]);
+      handleClearSelection();
       setSuccessMsg(data.message || 'Deletion completed.');
       setTimeout(() => setSuccessMsg(''), 4000);
       fetchQuestions();
@@ -215,18 +296,37 @@ export default function QuestionBankPage() {
   const executeRestore = async (targetStatus: 'draft' | 'published', reason: string) => {
     setIsBulkProcessing(true);
     try {
+      const isExplicitSingle = restoreTargetIds.length > 0;
       const isRestoringFromTrash = activeTab === 'deleted';
       const action = isRestoringFromTrash ? 'restore_deleted' : 'restore';
+      const payload: any = {
+        action,
+        targetStatus,
+        reason,
+        selectAllMatching: !isExplicitSingle && selectionMode === 'all_matching',
+        filters: !isExplicitSingle && selectionMode === 'all_matching' ? {
+          tab: activeTab,
+          q: search,
+          subject,
+          difficulty,
+          kind,
+          status: activeTab === 'active' ? status : undefined,
+        } : undefined,
+        excludedIds: !isExplicitSingle && selectionMode === 'all_matching' ? Array.from(deselectedIds) : undefined,
+        questionIds: isExplicitSingle ? restoreTargetIds : (selectionMode === 'page' ? Array.from(selectedIds) : undefined),
+      };
 
       const res = await fetch('/api/admin/questions/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, questionIds: restoreTargetIds, targetStatus, reason }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to restore question(s)');
 
       setRestoreModalOpen(false);
+      setRestoreTargetIds([]);
+      handleClearSelection();
       setSuccessMsg(data.message || 'Restored successfully.');
       setTimeout(() => setSuccessMsg(''), 4000);
       fetchQuestions();
@@ -239,21 +339,155 @@ export default function QuestionBankPage() {
 
   // Bulk Archive
   const handleBulkArchive = async () => {
-    if (!confirm(`Are you sure you want to archive ${selectedIds.size} selected question(s)?`)) return;
+    if (!confirm(`Are you sure you want to archive ${effectiveSelectedCount} selected question(s)?`)) return;
     setIsBulkProcessing(true);
     try {
+      const payload: any = {
+        action: 'archive',
+        reason: 'Bulk archived by admin',
+        selectAllMatching: selectionMode === 'all_matching',
+        filters: selectionMode === 'all_matching' ? {
+          tab: activeTab,
+          q: search,
+          subject,
+          difficulty,
+          kind,
+          status: activeTab === 'active' ? status : undefined,
+        } : undefined,
+        excludedIds: selectionMode === 'all_matching' ? Array.from(deselectedIds) : undefined,
+        questionIds: selectionMode === 'page' ? Array.from(selectedIds) : undefined,
+      };
+
       const res = await fetch('/api/admin/questions/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'archive',
-          questionIds: Array.from(selectedIds),
-          reason: 'Bulk archived by admin',
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Bulk archive failed');
+      handleClearSelection();
       setSuccessMsg(data.message || 'Questions archived.');
+      setTimeout(() => setSuccessMsg(''), 4000);
+      fetchQuestions();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
+  // Execute Rejection from Modal
+  const executeRejection = async (reason: string) => {
+    setIsBulkProcessing(true);
+    try {
+      const isExplicitSingle = rejectionTargetIds.length > 0;
+      const payload: any = {
+        action: 'bulk_reject',
+        reason,
+        selectAllMatching: !isExplicitSingle && selectionMode === 'all_matching',
+        filters: !isExplicitSingle && selectionMode === 'all_matching' ? {
+          tab: activeTab,
+          q: search,
+          subject,
+          difficulty,
+          kind,
+          status: activeTab === 'active' ? status : undefined,
+        } : undefined,
+        excludedIds: !isExplicitSingle && selectionMode === 'all_matching' ? Array.from(deselectedIds) : undefined,
+        questionIds: isExplicitSingle ? rejectionTargetIds : (selectionMode === 'page' ? Array.from(selectedIds) : undefined),
+      };
+
+      const res = await fetch('/api/admin/questions/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Bulk rejection failed');
+      setRejectionModalOpen(false);
+      setRejectionTargetIds([]);
+      handleClearSelection();
+      setSuccessMsg(data.message || 'Questions marked as rejected.');
+      setTimeout(() => setSuccessMsg(''), 4000);
+      fetchQuestions();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
+  // Resubmit to Draft
+  const executeResubmitToDraft = async (ids?: string[]) => {
+    const isExplicit = ids && ids.length > 0;
+    const count = isExplicit ? ids.length : effectiveSelectedCount;
+    if (!confirm(`Are you sure you want to resubmit ${count} question(s) to Draft / Pending Review?`)) return;
+    setIsBulkProcessing(true);
+    try {
+      const payload: any = {
+        action: 'bulk_resubmit',
+        selectAllMatching: !isExplicit && selectionMode === 'all_matching',
+        filters: (!isExplicit && selectionMode === 'all_matching') ? {
+          tab: activeTab,
+          q: search,
+          subject,
+          difficulty,
+          kind,
+        } : undefined,
+        excludedIds: (!isExplicit && selectionMode === 'all_matching') ? Array.from(deselectedIds) : undefined,
+        questionIds: isExplicit ? ids : (selectionMode === 'page' ? Array.from(selectedIds) : undefined),
+      };
+
+      const res = await fetch('/api/admin/questions/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Resubmit failed');
+      handleClearSelection();
+      setSuccessMsg(data.message || 'Questions resubmitted to Draft.');
+      setTimeout(() => setSuccessMsg(''), 4000);
+      fetchQuestions();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
+  // Move to Revision
+  const executeMoveToRevision = async (ids?: string[]) => {
+    const isExplicit = ids && ids.length > 0;
+    const count = isExplicit ? ids.length : effectiveSelectedCount;
+    const note = prompt('Enter revision instructions or comments for these questions:');
+    if (note === null) return;
+    setIsBulkProcessing(true);
+    try {
+      const payload: any = {
+        action: 'bulk_revision',
+        reason: note || 'Moved to revision by admin',
+        selectAllMatching: !isExplicit && selectionMode === 'all_matching',
+        filters: (!isExplicit && selectionMode === 'all_matching') ? {
+          tab: activeTab,
+          q: search,
+          subject,
+          difficulty,
+          kind,
+        } : undefined,
+        excludedIds: (!isExplicit && selectionMode === 'all_matching') ? Array.from(deselectedIds) : undefined,
+        questionIds: isExplicit ? ids : (selectionMode === 'page' ? Array.from(selectedIds) : undefined),
+      };
+
+      const res = await fetch('/api/admin/questions/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Move to revision failed');
+      handleClearSelection();
+      setSuccessMsg(data.message || 'Questions moved to Revision.');
       setTimeout(() => setSuccessMsg(''), 4000);
       fetchQuestions();
     } catch (err: any) {
@@ -307,14 +541,11 @@ export default function QuestionBankPage() {
         </div>
       )}
 
-      {/* Primary Section Tabs: Active vs Archived vs Trash */}
+      {/* Primary Section Tabs: Active vs Rejected vs Archived vs Trash */}
       <div className="flex items-center justify-between flex-wrap gap-3 border-b border-slate-800 pb-3">
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2 flex-wrap gap-y-2">
           <button
-            onClick={() => {
-              setActiveTab('active');
-              setPage(1);
-            }}
+            onClick={() => handleTabChange('active')}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 cursor-pointer ${
               activeTab === 'active'
                 ? 'bg-amber-500/15 text-amber-300 border border-amber-500/40 shadow-sm'
@@ -322,17 +553,29 @@ export default function QuestionBankPage() {
             }`}
           >
             <Database className="w-4 h-4 text-amber-400" />
-            <span>செயலில் உள்ள வினாக்கள் (Active Questions)</span>
+            <span>செயலில் உள்ளவை (Active)</span>
             <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-900 border border-slate-700 text-amber-400 font-mono">
               {counts.active}
             </span>
           </button>
 
           <button
-            onClick={() => {
-              setActiveTab('archived');
-              setPage(1);
-            }}
+            onClick={() => handleTabChange('rejected')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 cursor-pointer ${
+              activeTab === 'rejected'
+                ? 'bg-rose-500/15 text-rose-300 border border-rose-500/40 shadow-sm'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+            }`}
+          >
+            <XCircle className="w-4 h-4 text-rose-400" />
+            <span>நிராகரிக்கப்பட்டவை (Rejected)</span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-900 border border-slate-700 text-rose-400 font-mono">
+              {counts.rejected}
+            </span>
+          </button>
+
+          <button
+            onClick={() => handleTabChange('archived')}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 cursor-pointer ${
               activeTab === 'archived'
                 ? 'bg-purple-500/15 text-purple-300 border border-purple-500/40 shadow-sm'
@@ -340,17 +583,14 @@ export default function QuestionBankPage() {
             }`}
           >
             <Archive className="w-4 h-4 text-purple-400" />
-            <span>காப்பக வினாக்கள் (Archived Questions)</span>
+            <span>காப்பகம் (Archived)</span>
             <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-900 border border-slate-700 text-purple-400 font-mono">
               {counts.archived}
             </span>
           </button>
 
           <button
-            onClick={() => {
-              setActiveTab('deleted');
-              setPage(1);
-            }}
+            onClick={() => handleTabChange('deleted')}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 cursor-pointer ${
               activeTab === 'deleted'
                 ? 'bg-red-500/15 text-red-300 border border-red-500/40 shadow-sm'
@@ -358,7 +598,7 @@ export default function QuestionBankPage() {
             }`}
           >
             <Trash2 className="w-4 h-4 text-red-400" />
-            <span>நீக்கப்பட்டவை (Trash & Soft-Deleted)</span>
+            <span>குப்பை (Trash & Deleted)</span>
             <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-900 border border-slate-700 text-red-400 font-mono">
               {counts.deleted}
             </span>
@@ -468,11 +708,10 @@ export default function QuestionBankPage() {
               }}
               className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-300 focus:outline-none focus:ring-1 focus:ring-amber-500"
             >
-              <option value="">சரிபார்ப்பு நிலை (All Status)</option>
+              <option value="">சரிபார்ப்பு நிலை (All Active)</option>
               <option value="draft">வரைவு (Draft / Pending Review)</option>
               <option value="under_revision">திருத்தத்தில் (Under Revision)</option>
               <option value="published">வெளியிடப்பட்டது (Published / Active)</option>
-              <option value="rejected">நிராகரிக்கப்பட்டது (Rejected)</option>
             </select>
           ) : (
             <div className="flex items-center px-3 py-2 bg-slate-900/50 border border-slate-800 rounded-lg text-slate-400 text-xs">
@@ -490,21 +729,21 @@ export default function QuestionBankPage() {
       )}
 
       {/* Bulk Action Toolbar */}
-      {selectedIds.size > 0 && (
+      {effectiveSelectedCount > 0 && (
         <div className="p-3 sm:p-4 rounded-2xl bg-slate-850 border border-amber-500/40 shadow-xl flex items-center justify-between flex-wrap gap-3 sticky top-4 z-20">
           <div className="flex items-center space-x-3">
             <span className="text-xs font-bold text-amber-400 bg-amber-500/15 px-3 py-1 rounded-lg border border-amber-500/30 font-mono">
-              {selectedIds.size} Selected
+              {effectiveSelectedCount} {selectionMode === 'all_matching' ? 'Matching' : ''} Selected
             </span>
             <button
-              onClick={() => setSelectedIds(new Set())}
+              onClick={handleClearSelection}
               className="text-xs text-slate-400 hover:text-white underline cursor-pointer"
             >
               Clear selection
             </button>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 flex-wrap gap-y-2">
             {activeTab === 'active' && (
               <>
                 <button
@@ -516,9 +755,46 @@ export default function QuestionBankPage() {
                   <span>Bulk Archive</span>
                 </button>
                 <button
-                  onClick={() => openDeleteModal(Array.from(selectedIds), false)}
+                  onClick={() => openRejectionModal([])}
+                  disabled={isBulkProcessing}
+                  className="px-3.5 py-1.5 rounded-xl bg-rose-600/30 hover:bg-rose-600/50 text-rose-200 border border-rose-500/40 text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Bulk Reject</span>
+                </button>
+                <button
+                  onClick={() => openDeleteModal([], false)}
                   disabled={isBulkProcessing}
                   className="px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-lg shadow-red-950/50"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Bulk Delete</span>
+                </button>
+              </>
+            )}
+
+            {activeTab === 'rejected' && (
+              <>
+                <button
+                  onClick={() => executeResubmitToDraft()}
+                  disabled={isBulkProcessing}
+                  className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-lg shadow-amber-500/20"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Resubmit to Draft</span>
+                </button>
+                <button
+                  onClick={() => executeMoveToRevision()}
+                  disabled={isBulkProcessing}
+                  className="px-3.5 py-1.5 rounded-xl bg-blue-600/30 hover:bg-blue-600/50 text-blue-200 border border-blue-500/40 text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <Edit2 className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Move to Revision</span>
+                </button>
+                <button
+                  onClick={() => openDeleteModal([], false)}
+                  disabled={isBulkProcessing}
+                  className="px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   <span>Bulk Delete</span>
@@ -529,7 +805,7 @@ export default function QuestionBankPage() {
             {activeTab === 'archived' && (
               <>
                 <button
-                  onClick={() => openRestoreModal(Array.from(selectedIds))}
+                  onClick={() => openRestoreModal([])}
                   disabled={isBulkProcessing}
                   className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer"
                 >
@@ -537,7 +813,7 @@ export default function QuestionBankPage() {
                   <span>Bulk Restore</span>
                 </button>
                 <button
-                  onClick={() => openDeleteModal(Array.from(selectedIds), false)}
+                  onClick={() => openDeleteModal([], false)}
                   disabled={isBulkProcessing}
                   className="px-3.5 py-1.5 rounded-xl bg-red-600/30 hover:bg-red-600/50 text-red-300 border border-red-500/40 text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer"
                 >
@@ -550,7 +826,7 @@ export default function QuestionBankPage() {
             {activeTab === 'deleted' && (
               <>
                 <button
-                  onClick={() => openRestoreModal(Array.from(selectedIds))}
+                  onClick={() => openRestoreModal([])}
                   disabled={isBulkProcessing}
                   className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer"
                 >
@@ -558,7 +834,7 @@ export default function QuestionBankPage() {
                   <span>Restore from Trash</span>
                 </button>
                 <button
-                  onClick={() => openDeleteModal(Array.from(selectedIds), true)}
+                  onClick={() => openDeleteModal([], true)}
                   disabled={isBulkProcessing}
                   className="px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer"
                 >
@@ -571,6 +847,43 @@ export default function QuestionBankPage() {
         </div>
       )}
 
+      {/* Universal Selection Banner */}
+      {selectionMode === 'all_matching' ? (
+        <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between text-xs text-amber-200 shadow-sm">
+          <div className="flex items-center space-x-2">
+            <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>
+              தற்போதைய வடிகட்டலில் உள்ள அனைத்து <strong>{effectiveSelectedCount}</strong> வினாக்களும் தேர்ந்தெடுக்கப்பட்டுள்ளன (All {effectiveSelectedCount} matching questions selected across all pages).
+            </span>
+          </div>
+          <button
+            onClick={handleClearSelection}
+            className="font-bold underline text-amber-400 hover:text-amber-300 ml-3 shrink-0 cursor-pointer"
+          >
+            தேர்வை நீக்கு (Clear selection)
+          </button>
+        </div>
+      ) : (
+        questions.length > 0 &&
+        questions.every((q) => selectedIds.has(q.id)) &&
+        totalQuestions > questions.length && (
+          <div className="p-3.5 rounded-2xl bg-slate-800 border border-indigo-500/40 flex items-center justify-between text-xs text-slate-200 shadow-sm">
+            <div className="flex items-center space-x-2">
+              <Layers className="w-4 h-4 text-indigo-400 shrink-0" />
+              <span>
+                இப்பக்கத்தின் <strong>{questions.length}</strong> வினாக்கள் தேர்ந்தெடுக்கப்பட்டுள்ளன.
+              </span>
+            </div>
+            <button
+              onClick={handleSelectAllMatching}
+              className="font-bold text-amber-400 hover:text-amber-300 underline ml-3 shrink-0 cursor-pointer"
+            >
+              அனைத்துப் பக்கங்களிலுள்ள {totalQuestions} வினாக்களையும் தேர்ந்தெடு (Select all {totalQuestions} matching questions across all pages)
+            </button>
+          </div>
+        )
+      )}
+
       {/* Questions List */}
       <div className="space-y-3">
         <div className="flex items-center justify-between text-xs text-slate-400 px-1">
@@ -578,7 +891,11 @@ export default function QuestionBankPage() {
             <input
               type="checkbox"
               id="select-all-q"
-              checked={selectedIds.size === questions.length && questions.length > 0}
+              checked={
+                selectionMode === 'all_matching'
+                  ? totalQuestions > 0 && deselectedIds.size === 0
+                  : questions.length > 0 && questions.every((q) => selectedIds.has(q.id))
+              }
               onChange={handleSelectAllOnPage}
               className="rounded border-slate-700 bg-slate-800 text-amber-500 focus:ring-amber-500 cursor-pointer"
             />
@@ -586,7 +903,10 @@ export default function QuestionBankPage() {
               Select all on page ({questions.length})
             </label>
           </div>
-          <span>Showing {questions.length} of {totalQuestions} questions</span>
+          <span>
+            Showing {questions.length} of {totalQuestions} questions
+            {effectiveSelectedCount > 0 && ` (${effectiveSelectedCount} selected)`}
+          </span>
         </div>
 
         {loading ? (
@@ -609,7 +929,7 @@ export default function QuestionBankPage() {
           </div>
         ) : (
           questions.map((q) => {
-            const isSelected = selectedIds.has(q.id);
+            const isSelected = isQuestionSelected(q.id);
             return (
               <div
                 key={q.id}
@@ -710,6 +1030,24 @@ export default function QuestionBankPage() {
                   </div>
                 </div>
 
+                {/* Rejection reason banner */}
+                {(q.workflow?.status === 'rejected' || q.workflow?.rejection_reason) && (
+                  <div className="p-2.5 rounded-xl bg-rose-950/40 border border-rose-500/40 text-xs text-rose-300 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <XCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                      <span>
+                        நிராகரிப்பு காரணம் (Rejection Reason):{' '}
+                        <strong className="text-white">{q.workflow?.rejection_reason || 'Reason not recorded'}</strong>
+                      </span>
+                    </span>
+                    {q.workflow?.history?.find((h: any) => h.to_status === 'rejected')?.timestamp && (
+                      <span className="text-[10px] text-rose-400 font-mono">
+                        {new Date(q.workflow.history.find((h: any) => h.to_status === 'rejected').timestamp).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 {/* Archive / Deletion reason banners */}
                 {q.archive_reason && (
                   <div className="p-2.5 rounded-xl bg-purple-950/30 border border-purple-500/30 text-xs text-purple-300 flex items-center justify-between">
@@ -778,6 +1116,42 @@ export default function QuestionBankPage() {
                         <button
                           onClick={() => openDeleteModal([q.id], false)}
                           className="p-1.5 rounded-lg bg-slate-700/60 hover:bg-red-500/20 text-slate-400 hover:text-red-400 transition-colors cursor-pointer"
+                          title="Delete Question"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    )}
+
+                    {/* Rejected View Actions */}
+                    {activeTab === 'rejected' && (
+                      <>
+                        <button
+                          onClick={() => executeResubmitToDraft([q.id])}
+                          className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-semibold transition cursor-pointer"
+                          title="Resubmit to Draft"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>வரைவாக்கு (Draft)</span>
+                        </button>
+                        <button
+                          onClick={() => executeMoveToRevision([q.id])}
+                          className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/40 text-xs font-semibold transition cursor-pointer"
+                          title="Move to Revision"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                          <span>திருத்தம் (Revision)</span>
+                        </button>
+                        <Link
+                          href={`/admin/questions/${q.id}/edit`}
+                          className="p-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 transition-colors"
+                          title="Edit Question"
+                        >
+                          <Edit2 className="w-3.5 h-3.5 text-amber-400" />
+                        </Link>
+                        <button
+                          onClick={() => openDeleteModal([q.id], false)}
+                          className="p-1.5 rounded-lg bg-slate-700/60 hover:bg-red-500/20 text-slate-400 hover:text-red-400 transition cursor-pointer"
                           title="Delete Question"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -865,7 +1239,7 @@ export default function QuestionBankPage() {
       {/* Safe Deletion / Permanent Purge Modal */}
       <DeleteConfirmModal
         isOpen={deleteModalOpen}
-        selectedCount={deleteTargetIds.length}
+        selectedCount={deleteTargetIds.length > 0 ? deleteTargetIds.length : effectiveSelectedCount}
         questionIds={deleteTargetIds}
         isPermanent={deleteIsPermanent}
         onClose={() => setDeleteModalOpen(false)}
@@ -876,9 +1250,18 @@ export default function QuestionBankPage() {
       {/* Restore Modal */}
       <RestoreModal
         isOpen={restoreModalOpen}
-        selectedCount={restoreTargetIds.length}
+        selectedCount={restoreTargetIds.length > 0 ? restoreTargetIds.length : effectiveSelectedCount}
         onClose={() => setRestoreModalOpen(false)}
         onConfirm={executeRestore}
+        isLoading={isBulkProcessing}
+      />
+
+      {/* Rejection Modal */}
+      <RejectionModal
+        isOpen={rejectionModalOpen}
+        questionCount={rejectionTargetIds.length > 0 ? rejectionTargetIds.length : effectiveSelectedCount}
+        onClose={() => setRejectionModalOpen(false)}
+        onConfirm={executeRejection}
         isLoading={isBulkProcessing}
       />
     </div>

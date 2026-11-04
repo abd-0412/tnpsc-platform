@@ -32,12 +32,20 @@ import RejectionModal from '@/components/admin/RejectionModal';
 
 export default function VerificationCentrePage() {
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [selectionMode, setSelectionMode] = useState<'page' | 'all_matching'>('page');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deselectedIds, setDeselectedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [activeStatus, setActiveStatus] = useState<string>('draft');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalQuestions, setTotalQuestions] = useState(0);
+
+  // Effective selected count
+  const effectiveSelectedCount =
+    selectionMode === 'all_matching'
+      ? Math.max(0, totalQuestions - deselectedIds.size)
+      : selectedIds.size;
 
   // Tab Badge Counts
   const [counts, setCounts] = useState({
@@ -77,7 +85,9 @@ export default function VerificationCentrePage() {
         if (data.counts) {
           setCounts(data.counts);
         }
-        setSelectedIds(new Set());
+        if (selectionMode !== 'all_matching') {
+          setSelectedIds(new Set());
+        }
       } else {
         setErrorMsg(data.error || 'Failed to load questions');
       }
@@ -93,20 +103,59 @@ export default function VerificationCentrePage() {
     fetchQuestions();
   }, [activeStatus, page]);
 
+  const handleStatusChange = (status: string) => {
+    setActiveStatus(status);
+    setPage(1);
+    handleClearSelection();
+  };
+
   // Multi-select handlers
+  const isQuestionSelected = (id: string) => {
+    if (selectionMode === 'all_matching') return !deselectedIds.has(id);
+    return selectedIds.has(id);
+  };
+
   const handleSelectAll = () => {
-    if (selectedIds.size === questions.length) {
-      setSelectedIds(new Set());
+    if (selectionMode === 'all_matching') {
+      handleClearSelection();
     } else {
-      setSelectedIds(new Set(questions.map((q) => q.id)));
+      const pageIds = questions.map((q) => q.id);
+      const allSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id));
+      if (allSelected) {
+        const next = new Set(selectedIds);
+        pageIds.forEach((id) => next.delete(id));
+        setSelectedIds(next);
+      } else {
+        const next = new Set(selectedIds);
+        pageIds.forEach((id) => next.add(id));
+        setSelectedIds(next);
+      }
     }
   };
 
+  const handleSelectAllMatching = () => {
+    setSelectionMode('all_matching');
+    setDeselectedIds(new Set());
+  };
+
+  const handleClearSelection = () => {
+    setSelectionMode('page');
+    setSelectedIds(new Set());
+    setDeselectedIds(new Set());
+  };
+
   const handleToggleSelect = (id: string) => {
-    const next = new Set(selectedIds);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSelectedIds(next);
+    if (selectionMode === 'all_matching') {
+      const next = new Set(deselectedIds);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      setDeselectedIds(next);
+    } else {
+      const next = new Set(selectedIds);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      setSelectedIds(next);
+    }
   };
 
   // Perform workflow action via verification API
@@ -118,13 +167,17 @@ export default function VerificationCentrePage() {
     setActionInProgress(true);
     setErrorMsg('');
     try {
+      const isExplicit = ids && ids.length > 0;
       const res = await fetch('/api/admin/questions/verification', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          questionIds: ids,
+          questionIds: isExplicit ? ids : (selectionMode === 'page' ? Array.from(selectedIds) : undefined),
           action,
           comment,
+          selectAllMatching: !isExplicit && selectionMode === 'all_matching',
+          filters: (!isExplicit && selectionMode === 'all_matching') ? { status: activeStatus } : undefined,
+          excludedIds: (!isExplicit && selectionMode === 'all_matching') ? Array.from(deselectedIds) : undefined,
         }),
       });
 
@@ -135,6 +188,7 @@ export default function VerificationCentrePage() {
 
       setSuccessMsg(data.message || 'Action executed successfully.');
       setTimeout(() => setSuccessMsg(''), 4500);
+      handleClearSelection();
       await fetchQuestions();
     } catch (err: any) {
       setErrorMsg(err.message || 'Action failed');
@@ -275,14 +329,15 @@ export default function VerificationCentrePage() {
       </div>
 
       {/* Bulk Action Floating Toolbar */}
-      {selectedIds.size > 0 && (
+      {effectiveSelectedCount > 0 && (
         <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-850 border border-emerald-500/40 shadow-xl flex items-center justify-between flex-wrap gap-3 sticky top-4 z-20">
           <div className="flex items-center space-x-3">
             <span className="text-xs font-bold text-emerald-400 bg-emerald-500/15 px-3 py-1 rounded-lg border border-emerald-500/30 font-mono">
-              {selectedIds.size} Selected
+              {effectiveSelectedCount} Selected
+              {selectionMode === 'all_matching' ? ' (All Pages)' : ''}
             </span>
             <button
-              onClick={() => setSelectedIds(new Set())}
+              onClick={handleClearSelection}
               className="text-xs text-slate-400 hover:text-white underline cursor-pointer"
             >
               Clear selection
@@ -294,7 +349,7 @@ export default function VerificationCentrePage() {
             {activeStatus === 'draft' && (
               <>
                 <button
-                  onClick={() => performAction(Array.from(selectedIds), 'approve')}
+                  onClick={() => performAction([], 'approve')}
                   disabled={actionInProgress}
                   className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
@@ -302,7 +357,7 @@ export default function VerificationCentrePage() {
                   <span>Approve & Publish Selected</span>
                 </button>
                 <button
-                  onClick={() => openRevisionModal(Array.from(selectedIds))}
+                  onClick={() => openRevisionModal([])}
                   disabled={actionInProgress}
                   className="px-3.5 py-1.5 bg-blue-600/30 hover:bg-blue-600/50 text-blue-200 border border-blue-500/40 text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
@@ -310,7 +365,7 @@ export default function VerificationCentrePage() {
                   <span>Move to Revision</span>
                 </button>
                 <button
-                  onClick={() => openRejectionModal(Array.from(selectedIds))}
+                  onClick={() => openRejectionModal([])}
                   disabled={actionInProgress}
                   className="px-3.5 py-1.5 bg-rose-600/30 hover:bg-rose-600/50 text-rose-200 border border-rose-500/40 text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
@@ -318,7 +373,7 @@ export default function VerificationCentrePage() {
                   <span>Reject Selected</span>
                 </button>
                 <button
-                  onClick={() => performAction(Array.from(selectedIds), 'archive')}
+                  onClick={() => performAction([], 'archive')}
                   disabled={actionInProgress}
                   className="px-3 py-1.5 bg-purple-600/20 hover:bg-purple-600/40 text-purple-300 border border-purple-500/30 text-xs font-semibold rounded-xl transition cursor-pointer"
                 >
@@ -331,7 +386,7 @@ export default function VerificationCentrePage() {
             {(activeStatus === 'under_revision' || activeStatus === 'under_review') && (
               <>
                 <button
-                  onClick={() => performAction(Array.from(selectedIds), 'approve')}
+                  onClick={() => performAction([], 'approve')}
                   disabled={actionInProgress}
                   className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
@@ -339,7 +394,7 @@ export default function VerificationCentrePage() {
                   <span>Approve & Publish Selected</span>
                 </button>
                 <button
-                  onClick={() => performAction(Array.from(selectedIds), 'resubmit')}
+                  onClick={() => performAction([], 'resubmit')}
                   disabled={actionInProgress}
                   className="px-3.5 py-1.5 bg-amber-600/30 hover:bg-amber-600/50 text-amber-200 border border-amber-500/40 text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
@@ -347,7 +402,7 @@ export default function VerificationCentrePage() {
                   <span>Resubmit to Draft</span>
                 </button>
                 <button
-                  onClick={() => openRejectionModal(Array.from(selectedIds))}
+                  onClick={() => openRejectionModal([])}
                   disabled={actionInProgress}
                   className="px-3.5 py-1.5 bg-rose-600/30 hover:bg-rose-600/50 text-rose-200 border border-rose-500/40 text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
@@ -361,7 +416,7 @@ export default function VerificationCentrePage() {
             {activeStatus === 'published' && (
               <>
                 <button
-                  onClick={() => openRevisionModal(Array.from(selectedIds))}
+                  onClick={() => openRevisionModal([])}
                   disabled={actionInProgress}
                   className="px-3.5 py-1.5 bg-blue-600/30 hover:bg-blue-600/50 text-blue-200 border border-blue-500/40 text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
@@ -369,7 +424,7 @@ export default function VerificationCentrePage() {
                   <span>Move to Revision</span>
                 </button>
                 <button
-                  onClick={() => performAction(Array.from(selectedIds), 'archive')}
+                  onClick={() => performAction([], 'archive')}
                   disabled={actionInProgress}
                   className="px-3.5 py-1.5 bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-500/40 text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
@@ -383,7 +438,7 @@ export default function VerificationCentrePage() {
             {activeStatus === 'rejected' && (
               <>
                 <button
-                  onClick={() => performAction(Array.from(selectedIds), 'resubmit')}
+                  onClick={() => performAction([], 'resubmit')}
                   disabled={actionInProgress}
                   className="px-3.5 py-1.5 bg-amber-600/30 hover:bg-amber-600/50 text-amber-200 border border-amber-500/40 text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
@@ -391,7 +446,7 @@ export default function VerificationCentrePage() {
                   <span>Resubmit to Draft</span>
                 </button>
                 <button
-                  onClick={() => openRevisionModal(Array.from(selectedIds))}
+                  onClick={() => openRevisionModal([])}
                   disabled={actionInProgress}
                   className="px-3.5 py-1.5 bg-blue-600/30 hover:bg-blue-600/50 text-blue-200 border border-blue-500/40 text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
@@ -399,7 +454,7 @@ export default function VerificationCentrePage() {
                   <span>Move to Revision</span>
                 </button>
                 <button
-                  onClick={() => performAction(Array.from(selectedIds), 'archive')}
+                  onClick={() => performAction([], 'archive')}
                   disabled={actionInProgress}
                   className="px-3.5 py-1.5 bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-500/40 text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
@@ -409,6 +464,35 @@ export default function VerificationCentrePage() {
               </>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Universal Selection Banner */}
+      {selectionMode === 'page' && selectedIds.size === questions.length && questions.length > 0 && totalQuestions > questions.length && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 px-4 text-xs flex items-center justify-between text-amber-200">
+          <span>
+            இந்தப் பக்கத்திலுள்ள அனைத்து <strong>{questions.length}</strong> வினாக்களும் தேர்ந்தெடுக்கப்பட்டுள்ளன.
+          </span>
+          <button
+            onClick={handleSelectAllMatching}
+            className="font-bold underline text-amber-400 hover:text-amber-300 ml-2 cursor-pointer"
+          >
+            இத்தகுதியுடைய அனைத்து {totalQuestions} வினாக்களையும் தேர்ந்தெடுக்கவும் (Select all {totalQuestions} questions across all pages)
+          </button>
+        </div>
+      )}
+
+      {selectionMode === 'all_matching' && (
+        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-3 px-4 text-xs flex items-center justify-between text-emerald-200">
+          <span>
+            தற்போது இந்த தகுதியுடைய அனைத்து <strong>{effectiveSelectedCount}</strong> வினாக்களும் தேர்ந்தெடுக்கப்பட்டுள்ளன (Selected across all pages).
+          </span>
+          <button
+            onClick={handleClearSelection}
+            className="font-bold underline text-emerald-400 hover:text-emerald-300 ml-2 cursor-pointer"
+          >
+            தேர்வை ரத்து செய் (Clear selection)
+          </button>
         </div>
       )}
 
@@ -435,7 +519,12 @@ export default function VerificationCentrePage() {
               <input
                 type="checkbox"
                 id="select-all"
-                checked={selectedIds.size === questions.length && questions.length > 0}
+                checked={
+                  questions.length > 0 &&
+                  (selectionMode === 'all_matching'
+                    ? questions.every((q) => !deselectedIds.has(q.id))
+                    : questions.every((q) => selectedIds.has(q.id)))
+                }
                 onChange={handleSelectAll}
                 className="rounded border-slate-700 bg-slate-800 text-amber-500 focus:ring-amber-500 cursor-pointer"
               />
@@ -447,7 +536,7 @@ export default function VerificationCentrePage() {
           </div>
 
           {questions.map((q) => {
-            const isSelected = selectedIds.has(q.id);
+            const isSelected = isQuestionSelected(q.id);
             return (
               <div
                 key={q.id}
@@ -710,7 +799,7 @@ export default function VerificationCentrePage() {
       {/* Rejection Modal with Mandatory Reasons */}
       <RejectionModal
         isOpen={rejectionModalOpen}
-        selectedCount={rejectionTargetIds.length}
+        selectedCount={rejectionTargetIds.length || effectiveSelectedCount}
         onClose={() => setRejectionModalOpen(false)}
         onConfirm={executeRejection}
         isLoading={actionInProgress}
@@ -723,7 +812,7 @@ export default function VerificationCentrePage() {
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
                 <Clock className="w-4 h-4 text-blue-400" />
-                <span>Move to Under Revision ({revisionTargetIds.length} Qs)</span>
+                <span>Move to Under Revision ({revisionTargetIds.length || effectiveSelectedCount} Qs)</span>
               </h3>
               <button
                 onClick={() => setRevisionModalOpen(false)}

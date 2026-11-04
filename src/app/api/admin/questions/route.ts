@@ -54,9 +54,11 @@ export async function GET(request: NextRequest) {
       query = query.eq('is_archived', true).is('deleted_at', null);
     } else if (tab === 'deleted') {
       query = query.not('deleted_at', 'is', null);
+    } else if (tab === 'rejected') {
+      query = query.eq('workflow->>status', 'rejected').is('deleted_at', null);
     } else {
-      // Default: active questions
-      query = query.eq('is_archived', false).is('deleted_at', null);
+      // Default: active questions (eligible non-archived, non-deleted, non-rejected questions)
+      query = query.eq('is_archived', false).is('deleted_at', null).neq('workflow->>status', 'rejected');
     }
 
     // Filters
@@ -119,7 +121,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Aggregate counts for tabs
+    // Aggregate counts for tabs (strictly non-overlapping)
     const [
       { count: activeCount },
       { count: archivedCount },
@@ -129,13 +131,13 @@ export async function GET(request: NextRequest) {
       { count: publishedCount },
       { count: rejectedCount },
     ] = await Promise.all([
-      supabase.from('questions').select('*', { count: 'exact', head: true }).eq('is_archived', false).is('deleted_at', null),
+      supabase.from('questions').select('*', { count: 'exact', head: true }).eq('is_archived', false).is('deleted_at', null).neq('workflow->>status', 'rejected'),
       supabase.from('questions').select('*', { count: 'exact', head: true }).eq('is_archived', true).is('deleted_at', null),
       supabase.from('questions').select('*', { count: 'exact', head: true }).not('deleted_at', 'is', null),
       supabase.from('questions').select('*', { count: 'exact', head: true }).eq('workflow->>status', 'draft').eq('is_archived', false).is('deleted_at', null),
       supabase.from('questions').select('*', { count: 'exact', head: true }).or('workflow->>status.eq.under_revision,workflow->>status.eq.under_review').eq('is_archived', false).is('deleted_at', null),
       supabase.from('questions').select('*', { count: 'exact', head: true }).eq('workflow->>status', 'published').eq('is_archived', false).is('deleted_at', null),
-      supabase.from('questions').select('*', { count: 'exact', head: true }).eq('workflow->>status', 'rejected').eq('is_archived', false).is('deleted_at', null),
+      supabase.from('questions').select('*', { count: 'exact', head: true }).eq('workflow->>status', 'rejected').is('deleted_at', null),
     ]);
 
     return NextResponse.json({

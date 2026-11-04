@@ -27,10 +27,71 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { action, questionIds, reason, targetStatus } = body;
+    const { action, questionIds, reason, targetStatus, selectAllMatching, filters, excludedIds } = body;
 
-    if (!questionIds || !Array.isArray(questionIds) || questionIds.length === 0) {
-      return NextResponse.json({ error: 'At least one Question ID is required' }, { status: 400 });
+    let resolvedQuestionIds: string[] = [];
+
+    if (selectAllMatching && filters) {
+      const { tab, q: search, exam, subject, term, unit, lesson, difficulty, kind, status } = filters;
+      let qQuery = supabase.from('questions').select('id');
+
+      if (tab === 'archived') {
+        qQuery = qQuery.eq('is_archived', true).is('deleted_at', null);
+      } else if (tab === 'deleted') {
+        qQuery = qQuery.not('deleted_at', 'is', null);
+      } else if (tab === 'rejected') {
+        qQuery = qQuery.eq('workflow->>status', 'rejected').is('deleted_at', null);
+      } else {
+        // Default: active
+        qQuery = qQuery.eq('is_archived', false).is('deleted_at', null).neq('workflow->>status', 'rejected');
+      }
+
+      if (difficulty) qQuery = qQuery.eq('difficulty', difficulty);
+      if (kind) qQuery = qQuery.eq('kind', kind);
+      if (status && status !== 'all') {
+        if (status === 'under_revision' || status === 'under_review') {
+          qQuery = qQuery.or('workflow->>status.eq.under_revision,workflow->>status.eq.under_review');
+        } else {
+          qQuery = qQuery.eq('workflow->>status', status);
+        }
+      }
+      if (exam) {
+        if (exam === 'all_groups') {
+          qQuery = qQuery.or('syllabus->>exam_scope.eq.all_groups');
+        } else {
+          qQuery = qQuery.or(`syllabus->>exam_scope.eq.all_groups,exam_mappings.cs.[{"exam_id":"${exam}"}]`);
+        }
+      }
+      if (subject) qQuery = qQuery.eq('syllabus->>subject_id', subject);
+      if (term) {
+        if (term === 'all') qQuery = qQuery.or('syllabus->>term_scope.eq.all');
+        else qQuery = qQuery.or(`syllabus->>term_id.eq.${term},syllabus->>term_scope.eq.all`);
+      }
+      if (unit) {
+        if (unit === 'all') qQuery = qQuery.or('syllabus->>unit_scope.eq.all,syllabus->>term_scope.eq.all');
+        else qQuery = qQuery.or(`syllabus->>unit_id.eq.${unit},syllabus->>unit_scope.eq.all,syllabus->>term_scope.eq.all`);
+      }
+      if (lesson) {
+        if (lesson === 'all') qQuery = qQuery.or('syllabus->>lesson_scope.eq.all,syllabus->>unit_scope.eq.all,syllabus->>term_scope.eq.all');
+        else qQuery = qQuery.or(`syllabus->>lesson_id.eq.${lesson},syllabus->>lesson_scope.eq.all,syllabus->>unit_scope.eq.all,syllabus->>term_scope.eq.all`);
+      }
+      if (search) {
+        qQuery = qQuery.or(`texts->ta->>question.ilike.%${search}%,texts->en->>question.ilike.%${search}%,id.ilike.%${search}%`);
+      }
+
+      const { data: matchedRows, error: matchErr } = await qQuery;
+      if (matchErr) {
+        return NextResponse.json({ error: matchErr.message }, { status: 500 });
+      }
+
+      const excludedSet = new Set(excludedIds || []);
+      resolvedQuestionIds = (matchedRows || []).map((r: any) => r.id).filter((id: string) => !excludedSet.has(id));
+    } else {
+      resolvedQuestionIds = Array.isArray(questionIds) ? questionIds : [];
+    }
+
+    if (!resolvedQuestionIds || resolvedQuestionIds.length === 0) {
+      return NextResponse.json({ error: 'At least one Question ID is required or matching filters yielded 0 questions.' }, { status: 400 });
     }
 
     const validActions = [
@@ -60,14 +121,22 @@ export async function POST(request: NextRequest) {
     const adminName = profile.full_name || 'Admin';
     const now = new Date().toISOString();
 
-    // Fetch target questions
-    const { data: existingQuestions, error: fetchError } = await supabase
-      .from('questions')
-      .select('id, workflow, is_archived, deleted_at, texts')
-      .in('id', questionIds);
+    // Fetch target questions (chunks of 1000 if needed)
+    let existingQuestions: any[] = [];
+    const chunkSize = 1000;
+    for (let i = 0; i < resolvedQuestionIds.length; i += chunkSize) {
+      const chunk = resolvedQuestionIds.slice(i, i + chunkSize);
+      const { data: chunkData, error: fetchError } = await supabase
+        .from('questions')
+        .select('id, workflow, is_archived, deleted_at, texts')
+        .in('id', chunk);
 
-    if (fetchError) {
-      return NextResponse.json({ error: fetchError.message }, { status: 500 });
+      if (fetchError) {
+        return NextResponse.json({ error: fetchError.message }, { status: 500 });
+      }
+      if (chunkData) {
+        existingQuestions.push(...chunkData);
+      }
     }
 
     const existingMap = new Map((existingQuestions || []).map((q) => [q.id, q]));
@@ -78,17 +147,20 @@ export async function POST(request: NextRequest) {
     // Permanent Deletion check: Verify foreign keys in test_attempt_items
     let protectedIdsSet = new Set<string>();
     if (action === 'permanent_delete') {
-      const { data: referencedAttempts } = await supabase
-        .from('test_attempt_items')
-        .select('question_id')
-        .in('question_id', questionIds);
+      for (let i = 0; i < resolvedQuestionIds.length; i += chunkSize) {
+        const chunk = resolvedQuestionIds.slice(i, i + chunkSize);
+        const { data: referencedAttempts } = await supabase
+          .from('test_attempt_items')
+          .select('question_id')
+          .in('question_id', chunk);
 
-      if (referencedAttempts && referencedAttempts.length > 0) {
-        referencedAttempts.forEach((r) => protectedIdsSet.add(r.question_id));
+        if (referencedAttempts && referencedAttempts.length > 0) {
+          referencedAttempts.forEach((r) => protectedIdsSet.add(r.question_id));
+        }
       }
     }
 
-    for (const qId of questionIds) {
+    for (const qId of resolvedQuestionIds) {
       const q = existingMap.get(qId);
       if (!q) {
         failedRecords.push({ id: qId, reason: 'Question not found in database' });
@@ -263,6 +335,13 @@ export async function POST(request: NextRequest) {
             successfulIds.push(qId);
           }
         } else if (action === 'bulk_publish') {
+          if (currentStatus === 'rejected') {
+            failedRecords.push({
+              id: qId,
+              reason: 'Cannot directly publish a rejected question. It must be resubmitted to Draft or Revision first.',
+            });
+            continue;
+          }
           history.push({
             from_status: currentStatus,
             to_status: 'published',

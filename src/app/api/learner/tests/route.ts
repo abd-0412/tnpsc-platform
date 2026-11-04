@@ -30,7 +30,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch published test templates
-    const { data: templates, error: tError } = await supabase
+    const searchParams = request.nextUrl.searchParams;
+    const examFilter = searchParams.get('exam');
+
+    let query = supabase
       .from('test_templates')
       .select(`
         *,
@@ -42,6 +45,12 @@ export async function GET(request: NextRequest) {
       `)
       .eq('is_published', true)
       .order('created_at', { ascending: false });
+
+    if (examFilter && examFilter !== 'all') {
+      query = query.or(`exam_scope.eq.all_groups,exam_ids.cs.{${examFilter}},exam_id.eq.${examFilter}`);
+    }
+
+    const { data: templates, error: tError } = await query;
 
     if (tError) {
       return NextResponse.json({ error: tError.message }, { status: 500 });

@@ -122,10 +122,41 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { questionIds, action, comment, reason } = body;
+    const { questionIds, action, comment, reason, selectAllMatching, filters, excludedIds } = body;
     const finalReason = reason || comment || '';
 
-    if (!questionIds || !Array.isArray(questionIds) || questionIds.length === 0) {
+    let resolvedQuestionIds: string[] = [];
+
+    if (selectAllMatching && filters) {
+      let vQuery = supabase
+        .from('questions')
+        .select('id')
+        .eq('is_archived', false)
+        .is('deleted_at', null);
+
+      const filterStatus = filters.status || 'draft';
+      if (filterStatus && filterStatus !== 'all') {
+        if (filterStatus === 'under_revision' || filterStatus === 'under_review') {
+          vQuery = vQuery.or('workflow->>status.eq.under_revision,workflow->>status.eq.under_review');
+        } else {
+          vQuery = vQuery.eq('workflow->>status', filterStatus);
+        }
+      }
+      if (filters.subject) {
+        vQuery = vQuery.eq('syllabus->>subject_id', filters.subject);
+      }
+      if (filters.q) {
+        vQuery = vQuery.or(`texts->ta->>question.ilike.%${filters.q}%,texts->en->>question.ilike.%${filters.q}%,id.ilike.%${filters.q}%`);
+      }
+      const { data: vMatched, error: vErr } = await vQuery;
+      if (vErr) return NextResponse.json({ error: vErr.message }, { status: 500 });
+      const exSet = new Set(excludedIds || []);
+      resolvedQuestionIds = (vMatched || []).map((r: any) => r.id).filter((id: string) => !exSet.has(id));
+    } else {
+      resolvedQuestionIds = Array.isArray(questionIds) ? questionIds : [];
+    }
+
+    if (!resolvedQuestionIds || resolvedQuestionIds.length === 0) {
       return NextResponse.json({ error: 'At least one Question ID is required' }, { status: 400 });
     }
 
@@ -173,13 +204,21 @@ export async function POST(request: NextRequest) {
     }
 
     // Fetch existing questions
-    const { data: existingQuestions, error: fetchErr } = await supabase
-      .from('questions')
-      .select('id, workflow, texts')
-      .in('id', questionIds);
+    let existingQuestions: any[] = [];
+    const chunkSize = 1000;
+    for (let i = 0; i < resolvedQuestionIds.length; i += chunkSize) {
+      const chunk = resolvedQuestionIds.slice(i, i + chunkSize);
+      const { data: chunkData, error: fetchErr } = await supabase
+        .from('questions')
+        .select('id, workflow, texts')
+        .in('id', chunk);
 
-    if (fetchErr) {
-      return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+      if (fetchErr) {
+        return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+      }
+      if (chunkData) {
+        existingQuestions.push(...chunkData);
+      }
     }
 
     const auditLogs: AuditLogEntry[] = [];

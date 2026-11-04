@@ -19,7 +19,8 @@ import {
   Check,
   X,
   Sparkles,
-  BookOpen
+  BookOpen,
+  Globe
 } from 'lucide-react';
 
 interface TestTemplate {
@@ -28,6 +29,8 @@ interface TestTemplate {
   title_ta: string;
   category: string;
   exam_id: string | null;
+  exam_scope?: 'all_groups' | 'selected';
+  exam_ids?: string[];
   duration_minutes: number;
   total_marks: number;
   negative_marking_rate: number;
@@ -64,17 +67,34 @@ export default function AdminTestsPage() {
   const [qSearchQuery, setQSearchQuery] = useState('');
   const [subjectFilter, setSubjectFilter] = useState('all');
 
+  // Dynamic Exams from Exams API
+  const [exams, setExams] = useState<Array<{ id: string; title_en: string; title_ta: string }>>([]);
+
   // Form State
   const [formData, setFormData] = useState({
     title_ta: '',
     title_en: '',
     category: 'unit_quiz',
+    exam_scope: 'selected' as 'all_groups' | 'selected',
+    exam_ids: ['group_4'] as string[],
     exam_id: 'group_4',
     duration_minutes: 60,
     total_marks: 30,
     negative_marking_rate: 0.0,
     is_published: true,
   });
+
+  const fetchExams = async () => {
+    try {
+      const res = await fetch('/api/admin/exams');
+      const data = await res.json();
+      if (data.exams && Array.isArray(data.exams)) {
+        setExams(data.exams);
+      }
+    } catch (err) {
+      console.error('Failed to load exams', err);
+    }
+  };
 
   const fetchTests = async () => {
     setLoading(true);
@@ -106,6 +126,7 @@ export default function AdminTestsPage() {
   useEffect(() => {
     fetchTests();
     fetchQuestions();
+    fetchExams();
   }, []);
 
   const handleOpenCreateModal = () => {
@@ -117,6 +138,8 @@ export default function AdminTestsPage() {
       title_ta: '',
       title_en: '',
       category: 'unit_quiz',
+      exam_scope: 'selected',
+      exam_ids: ['group_4'],
       exam_id: 'group_4',
       duration_minutes: 45,
       total_marks: 0,
@@ -131,11 +154,18 @@ export default function AdminTestsPage() {
     setSelectedQuestionIds(test.question_ids || []);
     setQSearchQuery('');
     setSubjectFilter('all');
+    const existingScope = test.exam_scope || 'selected';
+    const existingExamIds = Array.isArray(test.exam_ids) && test.exam_ids.length > 0
+      ? test.exam_ids
+      : (test.exam_id ? [test.exam_id] : ['group_4']);
+
     setFormData({
       title_ta: test.title_ta || '',
       title_en: test.title_en || '',
       category: test.category || 'unit_quiz',
-      exam_id: test.exam_id || 'group_4',
+      exam_scope: existingScope,
+      exam_ids: existingExamIds,
+      exam_id: test.exam_id || existingExamIds[0] || 'group_4',
       duration_minutes: test.duration_minutes || 60,
       total_marks: test.total_marks || (test.question_ids?.length ? test.question_ids.length * 1.5 : 0),
       negative_marking_rate: test.negative_marking_rate || 0.0,
@@ -372,9 +402,25 @@ export default function AdminTestsPage() {
               </div>
 
               <div className="mt-4 sm:mt-5 pt-3 border-t border-slate-700/60 flex items-center justify-between gap-2">
-                <span className="text-[11px] text-slate-500 font-mono truncate">
-                  {test.exams?.title_en || 'TNPSC Group 4'}
-                </span>
+                <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                  {test.exam_scope === 'all_groups' ? (
+                    <span className="px-2 py-0.5 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-300 font-bold text-[10px]">
+                      அனைத்து குரூப் (All Groups)
+                    </span>
+                  ) : test.exam_ids && test.exam_ids.length > 1 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {test.exam_ids.map((eid) => (
+                        <span key={eid} className="px-1.5 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 font-mono text-[9px] uppercase">
+                          {eid.replace('_', ' ')}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-[11px] text-slate-400 font-mono truncate">
+                      {test.exams?.title_en || (test.exam_id ? test.exam_id.replace('_', ' ').toUpperCase() : 'TNPSC Group 4')}
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center space-x-2 shrink-0">
                   <button
                     onClick={() => handleOpenEditModal(test)}
@@ -479,19 +525,130 @@ export default function AdminTestsPage() {
                   </select>
                 </div>
 
-                <div>
-                  <label className="text-xs font-semibold text-slate-300 block mb-1.5">
-                    Exam Mapping
-                  </label>
-                  <select
-                    value={formData.exam_id}
-                    onChange={(e) => setFormData({ ...formData, exam_id: e.target.value })}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
-                  >
-                    <option value="group_4">TNPSC Group 4 (VAO / Junior Assistant)</option>
-                    <option value="group_2">TNPSC Group 2 (Interview Posts)</option>
-                    <option value="group_2a">TNPSC Group 2A (Non-Interview Posts)</option>
-                  </select>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-slate-300">
+                      Exam Group Mapping (தேர்வுப் பிரிவு ஒதுக்கீடு) *
+                    </label>
+                    <span className="text-[10px] text-indigo-400 font-mono">
+                      {formData.exam_scope === 'all_groups'
+                        ? 'All Groups / Common'
+                        : `${formData.exam_ids.length} Selected`}
+                    </span>
+                  </div>
+
+                  {/* Mode Pills */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          exam_scope: 'all_groups',
+                          exam_ids: exams.map((e) => e.id),
+                        }))
+                      }
+                      className={`px-3 py-2 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-2 cursor-pointer ${
+                        formData.exam_scope === 'all_groups'
+                          ? 'bg-purple-600/25 border-purple-500 text-purple-300 shadow-sm'
+                          : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Globe className="w-3.5 h-3.5 text-purple-400" />
+                      <span>All Groups / பொதுவானது</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          exam_scope: 'selected',
+                          exam_ids: prev.exam_ids.length > 0 ? prev.exam_ids : ['group_4'],
+                        }))
+                      }
+                      className={`px-3 py-2 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-2 cursor-pointer ${
+                        formData.exam_scope === 'selected'
+                          ? 'bg-indigo-600/25 border-indigo-500 text-indigo-300 shadow-sm'
+                          : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Layers className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>Selected Groups (தேர்ந்தெடுத்தவை)</span>
+                    </button>
+                  </div>
+
+                  {formData.exam_scope === 'selected' && (
+                    <div className="p-3 rounded-xl bg-slate-800/80 border border-slate-700 space-y-2">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-slate-400">பொருந்தும் தேர்வுகளைத் தேர்ந்தெடுக்கவும்:</span>
+                        <div className="space-x-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                exam_ids: exams.map((e) => e.id),
+                              }))
+                            }
+                            className="text-indigo-400 hover:underline cursor-pointer"
+                          >
+                            Select All
+                          </button>
+                          <span className="text-slate-600">•</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                exam_ids: [],
+                              }))
+                            }
+                            className="text-slate-400 hover:underline cursor-pointer"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {exams.length > 0 ? (
+                          exams.map((ex) => {
+                            const isChecked = formData.exam_ids.includes(ex.id);
+                            return (
+                              <label
+                                key={ex.id}
+                                className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer transition ${
+                                  isChecked
+                                    ? 'bg-indigo-600/15 border-indigo-500/50 text-indigo-200'
+                                    : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => {
+                                    const next = isChecked
+                                      ? formData.exam_ids.filter((id) => id !== ex.id)
+                                      : [...formData.exam_ids, ex.id];
+                                    setFormData((prev) => ({
+                                      ...prev,
+                                      exam_ids: next,
+                                      exam_id: next[0] || 'group_4',
+                                    }));
+                                  }}
+                                  className="rounded border-slate-700 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                />
+                                <span className="truncate">{ex.title_en}</span>
+                              </label>
+                            );
+                          })
+                        ) : (
+                          <div className="text-slate-500 text-xs">Loading examinations...</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div>
