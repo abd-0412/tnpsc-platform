@@ -9,7 +9,8 @@ export const dynamic = 'force-dynamic';
 export function normalizeQuestionRecord(
   raw: any,
   commonMapping?: Record<string, string>,
-  mappingStrategy?: string
+  mappingStrategy?: string,
+  availableExamIds?: string[]
 ): any {
   if (!raw || typeof raw !== 'object') return raw;
   const norm = { ...raw };
@@ -94,7 +95,7 @@ export function normalizeQuestionRecord(
       return m;
     });
   } else if (!norm.exam_mappings) {
-    norm.exam_mappings = [{ exam_id: commonMapping?.exam_id || 'group_4', is_relevant: true }];
+    norm.exam_mappings = [];
   }
 
   // 7. Syllabus normalization
@@ -147,29 +148,107 @@ export function normalizeQuestionRecord(
   if (norm.syllabus.unit_id === 'u2') norm.syllabus.unit_id = 'std-6-t1-i2';
   if (norm.syllabus.unit_id === 'u3') norm.syllabus.unit_id = 'std-6-t1-i3';
 
-  // Apply Common Syllabus Mapping
+  // Apply Common Syllabus Mapping & Broad Scope Logic
   if (commonMapping && Object.keys(commonMapping).length > 0) {
-    if (mappingStrategy === 'override_with_common') {
-      if (commonMapping.class_id) norm.syllabus.class_id = commonMapping.class_id;
-      if (commonMapping.subject_id) norm.syllabus.subject_id = commonMapping.subject_id;
-      if (commonMapping.term_id) norm.syllabus.term_id = commonMapping.term_id;
-      if (commonMapping.unit_id) norm.syllabus.unit_id = commonMapping.unit_id;
-      if (commonMapping.lesson_id) norm.syllabus.lesson_id = commonMapping.lesson_id;
-      if (commonMapping.chapter_id) norm.syllabus.chapter_id = commonMapping.chapter_id;
-      if (commonMapping.exam_id) {
-        norm.exam_mappings = [{ exam_id: commonMapping.exam_id, is_relevant: true }];
-      }
-    } else if (mappingStrategy === 'fill_missing_with_common') {
-      if (!norm.syllabus.class_id && commonMapping.class_id) norm.syllabus.class_id = commonMapping.class_id;
-      if (!norm.syllabus.subject_id && commonMapping.subject_id) norm.syllabus.subject_id = commonMapping.subject_id;
-      if (!norm.syllabus.term_id && commonMapping.term_id) norm.syllabus.term_id = commonMapping.term_id;
-      if (!norm.syllabus.unit_id && commonMapping.unit_id) norm.syllabus.unit_id = commonMapping.unit_id;
-      if (!norm.syllabus.lesson_id && commonMapping.lesson_id) norm.syllabus.lesson_id = commonMapping.lesson_id;
-      if (!norm.syllabus.chapter_id && commonMapping.chapter_id) norm.syllabus.chapter_id = commonMapping.chapter_id;
-      if ((!norm.exam_mappings || norm.exam_mappings.length === 0) && commonMapping.exam_id) {
-        norm.exam_mappings = [{ exam_id: commonMapping.exam_id, is_relevant: true }];
+    const isOverride = mappingStrategy === 'override_with_common';
+    const isFillMissing = mappingStrategy === 'fill_missing_with_common';
+
+    // 1. Examination Scope: All Groups vs Selected
+    if (commonMapping.exam_id) {
+      if (commonMapping.exam_id === 'all_groups') {
+        if (isOverride || !norm.exam_mappings || norm.exam_mappings.length === 0) {
+          norm.syllabus.exam_scope = 'all_groups';
+          norm.exam_mappings = (availableExamIds && availableExamIds.length > 0
+            ? availableExamIds
+            : ['group_4', 'group_2', 'group_2a', 'group_1']
+          ).map((id) => ({
+            exam_id: id,
+            is_relevant: true,
+          }));
+        }
+      } else {
+        if (isOverride || !norm.exam_mappings || norm.exam_mappings.length === 0) {
+          norm.syllabus.exam_scope = 'selected';
+          norm.exam_mappings = [{ exam_id: commonMapping.exam_id, is_relevant: true }];
+        }
       }
     }
+
+    // 2. Class & Subject
+    if (isOverride || !norm.syllabus.class_id) {
+      if (commonMapping.class_id) norm.syllabus.class_id = commonMapping.class_id;
+    }
+    if (isOverride || !norm.syllabus.subject_id) {
+      if (commonMapping.subject_id) norm.syllabus.subject_id = commonMapping.subject_id;
+    }
+
+    // 3. Broad Term / Iyal / Lesson Scope Mapping
+    const isAllTerms = commonMapping.term_id === 'all' || commonMapping.term_scope === 'all';
+    const isAllIyals = commonMapping.unit_id === 'all' || commonMapping.unit_scope === 'all';
+    const isAllLessons = commonMapping.lesson_id === 'all' || commonMapping.lesson_scope === 'all';
+
+    if (isAllTerms) {
+      // Entire Class & Subject across ALL terms
+      if (isOverride || (!norm.syllabus.term_id && !norm.syllabus.unit_id && !norm.syllabus.lesson_id)) {
+        norm.syllabus.term_scope = 'all';
+        norm.syllabus.term_id = null;
+        norm.syllabus.unit_scope = 'all';
+        norm.syllabus.unit_id = null;
+        norm.syllabus.lesson_scope = 'all';
+        norm.syllabus.lesson_id = null;
+      }
+    } else if (isAllIyals) {
+      // Entire Term across ALL Iyals
+      if (isOverride || (!norm.syllabus.unit_id && !norm.syllabus.lesson_id)) {
+        norm.syllabus.term_scope = 'specific';
+        if (commonMapping.term_id && commonMapping.term_id !== 'all') {
+          norm.syllabus.term_id = commonMapping.term_id;
+        }
+        norm.syllabus.unit_scope = 'all';
+        norm.syllabus.unit_id = null;
+        norm.syllabus.lesson_scope = 'all';
+        norm.syllabus.lesson_id = null;
+      }
+    } else if (isAllLessons) {
+      // Entire Iyal across ALL lessons
+      if (isOverride || !norm.syllabus.lesson_id) {
+        norm.syllabus.term_scope = 'specific';
+        if (commonMapping.term_id && commonMapping.term_id !== 'all') {
+          norm.syllabus.term_id = commonMapping.term_id;
+        }
+        norm.syllabus.unit_scope = 'specific';
+        if (commonMapping.unit_id && commonMapping.unit_id !== 'all') {
+          norm.syllabus.unit_id = commonMapping.unit_id;
+        }
+        norm.syllabus.lesson_scope = 'all';
+        norm.syllabus.lesson_id = null;
+      }
+    } else {
+      // Specific Lesson or individual hierarchy
+      if (isOverride || !norm.syllabus.term_id) {
+        if (commonMapping.term_id && commonMapping.term_id !== 'all') {
+          norm.syllabus.term_id = commonMapping.term_id;
+        }
+      }
+      if (isOverride || !norm.syllabus.unit_id) {
+        if (commonMapping.unit_id && commonMapping.unit_id !== 'all') {
+          norm.syllabus.unit_id = commonMapping.unit_id;
+        }
+      }
+      if (isOverride || !norm.syllabus.lesson_id) {
+        if (commonMapping.lesson_id && commonMapping.lesson_id !== 'all') {
+          norm.syllabus.lesson_id = commonMapping.lesson_id;
+        }
+      }
+      norm.syllabus.term_scope = norm.syllabus.term_id ? 'specific' : 'all';
+      norm.syllabus.unit_scope = norm.syllabus.unit_id ? 'specific' : 'all';
+      norm.syllabus.lesson_scope = norm.syllabus.lesson_id ? 'specific' : 'all';
+    }
+  }
+
+  // Ensure exam_mappings fallback if none was set
+  if (!norm.exam_mappings || norm.exam_mappings.length === 0) {
+    norm.exam_mappings = [{ exam_id: 'group_4', is_relevant: true }];
   }
 
   // 8. Media normalization
@@ -297,6 +376,14 @@ export async function POST(request: NextRequest) {
 
     const validSyllabusNodeIds = new Set((dbSyllabusNodes || []).map((n) => n.id));
 
+    // Pre-fetch all active exams from database
+    const { data: dbExams } = await supabase
+      .from('exams')
+      .select('id')
+      .eq('is_active', true);
+
+    const availableExamIds = (dbExams || []).map((e) => e.id);
+
     // Extract all candidate IDs to check existing questions in DB
     const candidateIds: string[] = [];
     rawRecords.forEach((item, idx) => {
@@ -340,8 +427,8 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // Normalize record with syllabus mapping strategy
-      const normalized = normalizeQuestionRecord(item.raw, commonMapping, mappingStrategy);
+      // Normalize record with syllabus mapping strategy and dynamic exam list
+      const normalized = normalizeQuestionRecord(item.raw, commonMapping, mappingStrategy, availableExamIds);
 
       const recordId = normalized.id || `TNPSC-IMP-${Date.now().toString(36)}-${item.lineIndex}`;
       normalized.id = recordId;

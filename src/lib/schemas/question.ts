@@ -35,6 +35,10 @@ export const SyllabusMappingSchema = z.object({
   chapter_id: z.string().nullable().optional(),
   topic_id: z.string().nullable().optional(),
   subtopic_id: z.string().nullable().optional(),
+  exam_scope: z.enum(['all_groups', 'selected']).optional().default('selected'),
+  term_scope: z.enum(['all', 'specific']).optional().default('specific'),
+  unit_scope: z.enum(['all', 'specific']).optional().default('specific'),
+  lesson_scope: z.enum(['all', 'specific']).optional().default('specific'),
 }).passthrough();
 
 export const QuestionDataPayloadSchema = z.record(z.string(), z.any()).default({});

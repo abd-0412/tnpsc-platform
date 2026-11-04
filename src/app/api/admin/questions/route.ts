@@ -73,17 +73,36 @@ export async function GET(request: NextRequest) {
         query = query.eq('workflow->>status', status);
       }
     }
+    if (exam) {
+      if (exam === 'all_groups') {
+        query = query.or('syllabus->>exam_scope.eq.all_groups');
+      } else {
+        query = query.or(`syllabus->>exam_scope.eq.all_groups,exam_mappings.cs.[{"exam_id":"${exam}"}]`);
+      }
+    }
     if (subject) {
       query = query.eq('syllabus->>subject_id', subject);
     }
     if (term) {
-      query = query.eq('syllabus->>term_id', term);
+      if (term === 'all') {
+        query = query.or('syllabus->>term_scope.eq.all');
+      } else {
+        query = query.or(`syllabus->>term_id.eq.${term},syllabus->>term_scope.eq.all`);
+      }
     }
     if (unit) {
-      query = query.eq('syllabus->>unit_id', unit);
+      if (unit === 'all') {
+        query = query.or('syllabus->>unit_scope.eq.all,syllabus->>term_scope.eq.all');
+      } else {
+        query = query.or(`syllabus->>unit_id.eq.${unit},syllabus->>unit_scope.eq.all,syllabus->>term_scope.eq.all`);
+      }
     }
     if (lesson) {
-      query = query.eq('syllabus->>lesson_id', lesson);
+      if (lesson === 'all') {
+        query = query.or('syllabus->>lesson_scope.eq.all,syllabus->>unit_scope.eq.all,syllabus->>term_scope.eq.all');
+      } else {
+        query = query.or(`syllabus->>lesson_id.eq.${lesson},syllabus->>lesson_scope.eq.all,syllabus->>unit_scope.eq.all,syllabus->>term_scope.eq.all`);
+      }
     }
 
     // Text search in Tamil, English, and Question ID

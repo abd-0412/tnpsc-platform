@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Save,
@@ -13,7 +13,8 @@ import {
   Sparkles,
   Plus,
   Trash2,
-  ArrowLeft
+  ArrowLeft,
+  Info
 } from 'lucide-react';
 import Link from 'next/link';
 import { Question } from '@/lib/types/question';
@@ -37,15 +38,34 @@ export default function QuestionEditor({ initialData, isEditMode = false }: Ques
   const [negativeMarks, setNegativeMarks] = useState(initialData?.question_settings?.negative_marks || 0.0);
   const [status, setStatus] = useState(initialData?.workflow?.status || 'draft');
 
-  // 2. Exam Mappings
+  // 2. Exam Mappings & Scope
+  const [examScope, setExamScope] = useState<'all_groups' | 'selected'>(
+    initialData?.syllabus?.exam_scope === 'all_groups' ? 'all_groups' : 'selected'
+  );
   const [exams, setExams] = useState<string[]>(
     initialData?.exam_mappings?.map((m) => m.exam_id) || ['group_4']
   );
+  const [availableExams, setAvailableExams] = useState<any[]>([]);
 
-  // 3. Syllabus Mapping
-  const [subjectId, setSubjectId] = useState(initialData?.syllabus?.subject_id || 'sub-polity');
-  const [unitId, setUnitId] = useState(initialData?.syllabus?.unit_id || '');
-  const [chapterId, setChapterId] = useState(initialData?.syllabus?.chapter_id || '');
+  // 3. Dynamic Syllabus Nodes & Scope Hierarchy
+  const [allNodes, setAllNodes] = useState<any[]>([]);
+  const [classId, setClassId] = useState(initialData?.syllabus?.class_id || 'std-6th');
+  const [subjectId, setSubjectId] = useState(initialData?.syllabus?.subject_id || 'general_tamil');
+
+  const [termScope, setTermScope] = useState<'all' | 'specific'>(
+    initialData?.syllabus?.term_scope || (initialData?.syllabus?.term_id ? 'specific' : 'all')
+  );
+  const [termId, setTermId] = useState(initialData?.syllabus?.term_id || 'std-6th-term-1');
+
+  const [unitScope, setUnitScope] = useState<'all' | 'specific'>(
+    initialData?.syllabus?.unit_scope || (initialData?.syllabus?.unit_id ? 'specific' : 'all')
+  );
+  const [unitId, setUnitId] = useState(initialData?.syllabus?.unit_id || 'std-6-t1-i1');
+
+  const [lessonScope, setLessonScope] = useState<'all' | 'specific'>(
+    initialData?.syllabus?.lesson_scope || (initialData?.syllabus?.lesson_id ? 'specific' : 'all')
+  );
+  const [lessonId, setLessonId] = useState(initialData?.syllabus?.lesson_id || '');
 
   // 4. Texts - Tamil
   const [questionTa, setQuestionTa] = useState(initialData?.texts?.ta?.question || '');
@@ -81,6 +101,96 @@ export default function QuestionEditor({ initialData, isEditMode = false }: Ques
   const [pyqExam, setPyqExam] = useState(initialData?.previous_year?.exam_name || 'TNPSC Group 4');
   const [pyqYear, setPyqYear] = useState<number | undefined>(initialData?.previous_year?.year || 2022);
 
+  // Load syllabus taxonomy and exams on mount
+  useEffect(() => {
+    async function loadMetadata() {
+      try {
+        const [resSyllabus, resExams] = await Promise.all([
+          fetch('/api/admin/syllabus'),
+          fetch('/api/admin/exams'),
+        ]);
+
+        const dataSyllabus = await resSyllabus.json();
+        if (dataSyllabus.nodes) setAllNodes(dataSyllabus.nodes);
+
+        const dataExams = await resExams.json();
+        if (dataExams.exams) setAvailableExams(dataExams.exams);
+      } catch (err) {
+        console.error('Failed to load metadata in QuestionEditor:', err);
+      }
+    }
+    loadMetadata();
+  }, []);
+
+  // Filtered dropdown lists based on parent IDs
+  const classOptions = useMemo(() => {
+    return allNodes.filter((n) => n.level === 'class');
+  }, [allNodes]);
+
+  const subjectOptions = useMemo(() => {
+    return allNodes.filter((n) => n.level === 'subject');
+  }, [allNodes]);
+
+  const termOptions = useMemo(() => {
+    if (!classId) return [];
+    return allNodes.filter((n) => n.level === 'term' && n.parent_id === classId);
+  }, [allNodes, classId]);
+
+  const unitOptions = useMemo(() => {
+    if (!termId || termScope === 'all') return [];
+    return allNodes.filter((n) => n.level === 'unit' && n.parent_id === termId);
+  }, [allNodes, termId, termScope]);
+
+  const lessonOptions = useMemo(() => {
+    if (!unitId || unitScope === 'all' || termScope === 'all') return [];
+    return allNodes.filter((n) => n.level === 'lesson' && n.parent_id === unitId);
+  }, [allNodes, unitId, unitScope, termScope]);
+
+  // Handle Class change
+  const handleClassChange = (newClass: string) => {
+    setClassId(newClass);
+    setTermScope('all');
+    setUnitScope('all');
+    setLessonScope('all');
+  };
+
+  // Handle Term change
+  const handleTermChange = (val: string) => {
+    if (val === 'all') {
+      setTermScope('all');
+      setUnitScope('all');
+      setLessonScope('all');
+    } else {
+      setTermScope('specific');
+      setTermId(val);
+      setUnitScope('all');
+      setLessonScope('all');
+    }
+  };
+
+  // Handle Unit change
+  const handleUnitChange = (val: string) => {
+    if (val === 'all') {
+      setUnitScope('all');
+      setLessonScope('all');
+    } else {
+      setUnitScope('specific');
+      setUnitId(val);
+      setLessonScope('all');
+    }
+  };
+
+  // Handle Lesson change
+  const handleLessonChange = (val: string) => {
+    if (val === 'all') {
+      setLessonScope('all');
+      setLessonId('');
+    } else {
+      setLessonScope('specific');
+      setLessonId(val);
+    }
+  };
+
   // Toggle Exam checkbox
   const toggleExam = (examId: string) => {
     if (exams.includes(examId)) {
@@ -109,17 +219,39 @@ export default function QuestionEditor({ initialData, isEditMode = false }: Ques
     setLoading(true);
 
     try {
+      const isAllGroups = examScope === 'all_groups';
+      const isAllTerms = termScope === 'all';
+      const isAllIyals = isAllTerms || unitScope === 'all';
+      const isAllLessons = isAllIyals || lessonScope === 'all';
+
+      const examMappingsList = isAllGroups
+        ? (availableExams.length > 0
+            ? availableExams.map((e) => ({ exam_id: e.id, is_relevant: true }))
+            : [
+                { exam_id: 'group_4', is_relevant: true },
+                { exam_id: 'group_2', is_relevant: true },
+                { exam_id: 'group_2a', is_relevant: true },
+                { exam_id: 'group_1', is_relevant: true },
+              ])
+        : exams.map((e) => ({ exam_id: e, is_relevant: true }));
+
       const payload = {
         id: id || undefined,
         schema_version: '1.0.0',
         kind,
         level: 'prelims',
         difficulty,
-        exam_mappings: exams.map((e) => ({ exam_id: e, is_relevant: true })),
+        exam_mappings: examMappingsList,
         syllabus: {
+          exam_scope: isAllGroups ? 'all_groups' : 'selected',
+          class_id: classId,
           subject_id: subjectId,
-          unit_id: unitId || undefined,
-          chapter_id: chapterId || undefined,
+          term_id: isAllTerms ? null : termId || null,
+          term_scope: isAllTerms ? 'all' : 'specific',
+          unit_id: isAllIyals ? null : unitId || null,
+          unit_scope: isAllIyals ? 'all' : 'specific',
+          lesson_id: isAllLessons ? null : lessonId || null,
+          lesson_scope: isAllLessons ? 'all' : 'specific',
         },
         texts: {
           ta: {
@@ -243,14 +375,14 @@ export default function QuestionEditor({ initialData, isEditMode = false }: Ques
       )}
 
       {/* Section 1: Classification & Exam Configuration */}
-      <div className="p-6 rounded-2xl bg-slate-800/60 border border-slate-700/60 space-y-4 shadow-xl">
+      <div className="p-6 rounded-2xl bg-slate-800/60 border border-slate-700/60 space-y-5 shadow-xl">
         <h2 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center space-x-2">
           <Award className="w-4 h-4" />
-          <span>1. தேர்வு மற்றும் பாடப் பிரிவு (Classification & Mapping)</span>
+          <span>1. வகைப்பாடு, தேர்வு மற்றும் பாடத்திட்ட படிநிலை (Classification & Hierarchy)</span>
         </h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-          {/* Question Kind */}
+        {/* Kind and Difficulty */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
           <div>
             <label className="block text-slate-300 font-medium mb-1.5">வினா வகை (Question Kind)</label>
             <select
@@ -267,7 +399,6 @@ export default function QuestionEditor({ initialData, isEditMode = false }: Ques
             </select>
           </div>
 
-          {/* Difficulty */}
           <div>
             <label className="block text-slate-300 font-medium mb-1.5">கடினத்தன்மை (Difficulty)</label>
             <select
@@ -280,52 +411,222 @@ export default function QuestionEditor({ initialData, isEditMode = false }: Ques
               <option value="hard">கடினம் (Hard)</option>
             </select>
           </div>
-
-          {/* Subject Selector */}
-          <div>
-            <label className="block text-slate-300 font-medium mb-1.5">பாடம் (Subject)</label>
-            <select
-              value={subjectId}
-              onChange={(e) => setSubjectId(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
-            >
-              <option value="sub-tamil">பொதுத் தமிழ் (General Tamil)</option>
-              <option value="sub-polity">இந்திய ஆட்சியியல் (Indian Polity)</option>
-              <option value="sub-history">வரலாறு மற்றும் பண்பாடு (History)</option>
-              <option value="sub-aptitude">திறனறிவு (Aptitude & Mental Ability)</option>
-              <option value="sub-unit8">அலகு 8 (Unit 8 TN Culture & History)</option>
-            </select>
-          </div>
         </div>
 
-        {/* Target Examination Checkboxes */}
-        <div className="pt-2">
-          <label className="block text-slate-300 text-xs font-medium mb-2">
-            இலக்கு தேர்வுகள் (Target Examinations)
+        {/* Target Examination Scope */}
+        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-700/60 space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <label className="text-slate-300 text-xs font-bold uppercase tracking-wider block">
+              இலக்கு தேர்வுகள் (Target Examinations)
+            </label>
+
+            <label className="flex items-center space-x-2 text-xs font-semibold text-amber-300 cursor-pointer bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/30">
+              <input
+                type="checkbox"
+                checked={examScope === 'all_groups'}
+                onChange={(e) => setExamScope(e.target.checked ? 'all_groups' : 'selected')}
+                className="rounded text-amber-500 focus:ring-0"
+              />
+              <span>All Groups / Common to All Groups (அனைத்து குரூப் தேர்வுகள்)</span>
+            </label>
+          </div>
+
+          {examScope === 'all_groups' ? (
+            <p className="text-xs text-amber-300/80 font-tamil">
+              ✓ இவ்வினா அனைத்து தமிழ்நாடு அரசுப் பணியாளர் தேர்வாணைய (TNPSC) குரூப் தேர்வுகளுக்கும் பொதுவானதாகக் கருதப்படும் (Group 1, 2, 2A, 4, etc.).
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-2 text-xs pt-1">
+              {(availableExams.length > 0 ? availableExams : [
+                { id: 'group_4', title_en: 'Group 4', title_ta: 'குரூப் 4' },
+                { id: 'group_2', title_en: 'Group 2', title_ta: 'குரூப் 2' },
+                { id: 'group_2a', title_en: 'Group 2A', title_ta: 'குரூப் 2A' },
+                { id: 'group_1', title_en: 'Group 1', title_ta: 'குரூப் 1' },
+              ]).map((ex) => (
+                <label
+                  key={ex.id}
+                  className={`flex items-center space-x-2 px-3 py-1.5 rounded-xl border cursor-pointer transition-all ${
+                    exams.includes(ex.id)
+                      ? 'bg-amber-500/15 border-amber-500/50 text-amber-300 font-semibold'
+                      : 'bg-slate-900/60 border-slate-800 text-slate-400'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={exams.includes(ex.id)}
+                    onChange={() => toggleExam(ex.id)}
+                    className="rounded text-amber-500 focus:ring-0"
+                  />
+                  <span>{ex.title_en} ({ex.title_ta})</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Syllabus Hierarchy Cascading Selectors */}
+        <div className="space-y-3 pt-1">
+          <label className="text-slate-300 text-xs font-bold uppercase tracking-wider block">
+            பாடத்திட்ட படிநிலை & பரந்த எல்லை (Syllabus Hierarchy & Broad Scope)
           </label>
-          <div className="flex flex-wrap gap-3 text-xs">
-            {[
-              { id: 'group_4', label: 'TNPSC Group 4 (VAO & JA)' },
-              { id: 'group_2', label: 'TNPSC Group 2' },
-              { id: 'group_2a', label: 'TNPSC Group 2A' },
-            ].map((ex) => (
-              <label
-                key={ex.id}
-                className={`flex items-center space-x-2 px-3 py-1.5 rounded-xl border cursor-pointer transition-all ${
-                  exams.includes(ex.id)
-                    ? 'bg-amber-500/10 border-amber-500/40 text-amber-300 font-medium'
-                    : 'bg-slate-900/60 border-slate-800 text-slate-400'
-                }`}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 text-xs">
+            {/* Class */}
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-400 uppercase block">வகுப்பு (Class)</label>
+              <select
+                value={classId}
+                onChange={(e) => handleClassChange(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
               >
-                <input
-                  type="checkbox"
-                  checked={exams.includes(ex.id)}
-                  onChange={() => toggleExam(ex.id)}
-                  className="rounded text-amber-500 focus:ring-0"
-                />
-                <span>{ex.label}</span>
+                {classOptions.length > 0 ? (
+                  classOptions.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.title_ta || c.title_en}
+                    </option>
+                  ))
+                ) : (
+                  <>
+                    <option value="std-6th">6-ஆம் வகுப்பு (6th Std)</option>
+                    <option value="std-7th">7-ஆம் வகுப்பு (7th Std)</option>
+                    <option value="std-8th">8-ஆம் வகுப்பு (8th Std)</option>
+                    <option value="std-9th">9-ஆம் வகுப்பு (9th Std)</option>
+                    <option value="std-10th">10-ஆம் வகுப்பு (10th Std)</option>
+                    <option value="std-11th">11-ஆம் வகுப்பு (11th Std)</option>
+                    <option value="std-12th">12-ஆம் வகுப்பு (12th Std)</option>
+                  </>
+                )}
+              </select>
+            </div>
+
+            {/* Subject */}
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-400 uppercase block">பாடம் (Subject)</label>
+              <select
+                value={subjectId}
+                onChange={(e) => setSubjectId(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+              >
+                {subjectOptions.length > 0 ? (
+                  subjectOptions.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.title_ta || s.title_en}
+                    </option>
+                  ))
+                ) : (
+                  <>
+                    <option value="general_tamil">பொதுத் தமிழ் (General Tamil)</option>
+                    <option value="sub-polity">இந்திய ஆட்சியியல் (Polity)</option>
+                    <option value="sub-history">வரலாறு (History)</option>
+                    <option value="sub-aptitude">திறனறிவு (Aptitude)</option>
+                    <option value="sub-geography">புவியியல் (Geography)</option>
+                    <option value="sub-economy">பொருளாதாரம் (Economy)</option>
+                    <option value="sub-unit8">தமிழ் சமுதாய வரலாறு (Unit 8)</option>
+                    <option value="sub-unit9">தமிழக நிர்வாகம் (Unit 9)</option>
+                  </>
+                )}
+              </select>
+            </div>
+
+            {/* Term */}
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-400 uppercase block">பருவம் (Term)</label>
+              <select
+                value={termScope === 'all' ? 'all' : termId}
+                onChange={(e) => handleTermChange(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+              >
+                <option value="all">All Terms (அனைத்துப் பருவம்)</option>
+                {termOptions.length > 0 ? (
+                  termOptions.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.title_ta || t.title_en}
+                    </option>
+                  ))
+                ) : (
+                  <>
+                    <option value="std-6th-term-1">பருவம் 1 (Term 1)</option>
+                    <option value="std-6th-term-2">பருவம் 2 (Term 2)</option>
+                    <option value="std-6th-term-3">பருவம் 3 (Term 3)</option>
+                  </>
+                )}
+              </select>
+            </div>
+
+            {/* Unit / Iyal */}
+            <div className="space-y-1">
+              <label className={`text-[10px] font-bold uppercase block ${
+                termScope === 'all' ? 'text-slate-600' : 'text-slate-400'
+              }`}>
+                இயல் (Unit / Iyal)
               </label>
-            ))}
+              <select
+                value={termScope === 'all' || unitScope === 'all' ? 'all' : unitId}
+                onChange={(e) => handleUnitChange(e.target.value)}
+                disabled={termScope === 'all'}
+                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-1 focus:ring-amber-500 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <option value="all">All Iyals in Term (அனைத்து இயல்)</option>
+                {unitOptions.length > 0 ? (
+                  unitOptions.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.title_ta || u.title_en}
+                    </option>
+                  ))
+                ) : (
+                  <>
+                    <option value="std-6-t1-i1">இயல் 1: தமிழ் தேன்</option>
+                    <option value="std-6-t1-i2">இயல் 2: இயற்கை இன்பம்</option>
+                    <option value="std-6-t1-i3">இயல் 3: எந்திர உலகம்</option>
+                  </>
+                )}
+              </select>
+            </div>
+
+            {/* Lesson */}
+            <div className="space-y-1">
+              <label className={`text-[10px] font-bold uppercase block ${
+                termScope === 'all' || unitScope === 'all' ? 'text-slate-600' : 'text-slate-400'
+              }`}>
+                பாடம் (Lesson)
+              </label>
+              <select
+                value={termScope === 'all' || unitScope === 'all' || lessonScope === 'all' ? 'all' : lessonId}
+                onChange={(e) => handleLessonChange(e.target.value)}
+                disabled={termScope === 'all' || unitScope === 'all'}
+                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-1 focus:ring-amber-500 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <option value="all">All Lessons in Iyal (அனைத்துப் பாடம்)</option>
+                {lessonOptions.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.title_ta || l.title_en}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Active Scope Pill Summary */}
+          <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-700/60 text-xs text-slate-300 flex items-center space-x-2">
+            <Info className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="font-mono text-[11px]">
+              Scope:{' '}
+              <strong className="text-amber-400">
+                {examScope === 'all_groups' ? 'All Groups' : exams.join(', ')}
+              </strong>{' '}
+              | {classId} | {subjectId} |{' '}
+              <strong className={termScope === 'all' ? 'text-purple-400' : 'text-slate-200'}>
+                {termScope === 'all' ? 'All Terms' : termId}
+              </strong>{' '}
+              →{' '}
+              <strong className={unitScope === 'all' ? 'text-purple-400' : 'text-slate-200'}>
+                {termScope === 'all' ? '— (Subject)' : unitScope === 'all' ? 'All Iyals' : unitId}
+              </strong>{' '}
+              →{' '}
+              <strong className={lessonScope === 'all' ? 'text-purple-400' : 'text-slate-200'}>
+                {termScope === 'all' || unitScope === 'all' ? '— (Unit)' : lessonScope === 'all' ? 'All Lessons' : lessonId || 'All Lessons'}
+              </strong>
+            </span>
           </div>
         </div>
       </div>

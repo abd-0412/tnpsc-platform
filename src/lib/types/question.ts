@@ -39,14 +39,18 @@ export interface ExamMapping {
 }
 
 export interface SyllabusMapping {
-  class_id?: string;
+  class_id?: string | null;
   subject_id: string;
-  term_id?: string;
-  unit_id?: string;
-  lesson_id?: string;
-  chapter_id?: string;
-  topic_id?: string;
-  subtopic_id?: string;
+  term_id?: string | null;
+  unit_id?: string | null;
+  lesson_id?: string | null;
+  chapter_id?: string | null;
+  topic_id?: string | null;
+  subtopic_id?: string | null;
+  exam_scope?: 'all_groups' | 'selected';
+  term_scope?: 'all' | 'specific';
+  unit_scope?: 'all' | 'specific';
+  lesson_scope?: 'all' | 'specific';
 }
 
 export interface OptionItem {

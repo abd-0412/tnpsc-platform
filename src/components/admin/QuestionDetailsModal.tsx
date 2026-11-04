@@ -131,32 +131,87 @@ export default function QuestionDetailsModal({
             </div>
           </div>
 
-          {/* Syllabus Hierarchy Citation */}
-          <div className="p-4 rounded-2xl bg-indigo-950/30 border border-indigo-500/30 space-y-2 text-xs">
-            <div className="flex items-center space-x-2 text-indigo-400 font-bold uppercase tracking-wider text-[11px]">
-              <Layers className="w-4 h-4" />
-              <span>Syllabus Taxonomy & Textbook Mapping</span>
+          {/* Syllabus Hierarchy Citation & Broad Scopes */}
+          <div className="p-4 rounded-2xl bg-indigo-950/30 border border-indigo-500/30 space-y-3 text-xs">
+            <div className="flex items-center justify-between border-b border-indigo-500/20 pb-2">
+              <div className="flex items-center space-x-2 text-indigo-400 font-bold uppercase tracking-wider text-[11px]">
+                <Layers className="w-4 h-4" />
+                <span>Syllabus Taxonomy & Scope Mapping</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {question.syllabus?.exam_scope === 'all_groups' && (
+                  <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/40 font-mono text-[10px] font-bold">
+                    All Groups / Common
+                  </span>
+                )}
+                {question.syllabus?.term_scope === 'all' && (
+                  <span className="px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 border border-purple-500/40 font-mono text-[10px] font-bold">
+                    All Terms Scope
+                  </span>
+                )}
+                {question.syllabus?.term_scope !== 'all' && question.syllabus?.unit_scope === 'all' && (
+                  <span className="px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 border border-purple-500/40 font-mono text-[10px] font-bold">
+                    All Iyals Scope
+                  </span>
+                )}
+                {question.syllabus?.unit_scope !== 'all' && question.syllabus?.lesson_scope === 'all' && (
+                  <span className="px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 border border-purple-500/40 font-mono text-[10px] font-bold">
+                    All Lessons Scope
+                  </span>
+                )}
+              </div>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-slate-300">
-              <div>
-                <span className="text-slate-400 text-[10px] block">Subject ID:</span>
-                <span className="font-medium">{question.syllabus?.subject_id || 'N/A'}</span>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-slate-300">
+              <div className="p-2 rounded-xl bg-slate-900/50 border border-slate-800">
+                <span className="text-slate-400 text-[10px] block font-bold uppercase">Exam Groups:</span>
+                <span className="font-medium text-amber-400">
+                  {question.syllabus?.exam_scope === 'all_groups'
+                    ? 'All Groups / Common'
+                    : question.exam_mappings?.map((m: any) => m.exam_id).join(', ') || 'N/A'}
+                </span>
               </div>
-              <div>
-                <span className="text-slate-400 text-[10px] block">Unit / Iyal ID:</span>
-                <span className="font-medium">{question.syllabus?.unit_id || 'N/A'}</span>
+              <div className="p-2 rounded-xl bg-slate-900/50 border border-slate-800">
+                <span className="text-slate-400 text-[10px] block font-bold uppercase">Subject ID:</span>
+                <span className="font-medium">{question.syllabus?.subject_id || 'general_tamil'}</span>
               </div>
-              <div>
-                <span className="text-slate-400 text-[10px] block">Lesson ID:</span>
-                <span className="font-medium">{question.syllabus?.lesson_id || 'N/A'}</span>
+              <div className="p-2 rounded-xl bg-slate-900/50 border border-slate-800">
+                <span className="text-slate-400 text-[10px] block font-bold uppercase">Term:</span>
+                <span className="font-medium">
+                  {question.syllabus?.term_scope === 'all'
+                    ? 'All Terms (அனைத்துப் பருவங்கள்)'
+                    : question.syllabus?.term_id || 'N/A'}
+                </span>
+              </div>
+              <div className="p-2 rounded-xl bg-slate-900/50 border border-slate-800">
+                <span className="text-slate-400 text-[10px] block font-bold uppercase">Unit / Iyal:</span>
+                <span className="font-medium">
+                  {question.syllabus?.term_scope === 'all'
+                    ? '— (Entire Subject)'
+                    : question.syllabus?.unit_scope === 'all'
+                    ? 'All Iyals in Term (அனைத்து இயல்கள்)'
+                    : question.syllabus?.unit_id || 'N/A'}
+                </span>
+              </div>
+              <div className="p-2 rounded-xl bg-slate-900/50 border border-slate-800 col-span-2">
+                <span className="text-slate-400 text-[10px] block font-bold uppercase">Lesson:</span>
+                <span className="font-medium">
+                  {question.syllabus?.term_scope === 'all' || question.syllabus?.unit_scope === 'all'
+                    ? '— (Entire Unit)'
+                    : question.syllabus?.lesson_scope === 'all'
+                    ? 'All Lessons in Iyal (அனைத்துப் பாடங்கள்)'
+                    : question.syllabus?.lesson_id || 'N/A'}
+                </span>
               </div>
               {question.source && (
-                <div className="col-span-2 sm:col-span-3 text-indigo-200 pt-1 border-t border-indigo-500/20">
-                  <span className="text-indigo-400 font-semibold">Samacheer Book: </span>
-                  {question.source.book || `Standard ${question.source.standard || 6}`}
-                  {question.source.term ? `, Term ${question.source.term}` : ''}
-                  {question.source.chapter ? `, ${question.source.chapter}` : ''}
-                  {question.source.page_number ? `, Page ${question.source.page_number}` : ''}
+                <div className="col-span-2 text-indigo-200 p-2 rounded-xl bg-slate-900/50 border border-slate-800">
+                  <span className="text-indigo-400 font-semibold block text-[10px] uppercase">Samacheer Book Citation:</span>
+                  <span>
+                    {question.source.book || `Standard ${question.source.standard || 6}`}
+                    {question.source.term ? `, Term ${question.source.term}` : ''}
+                    {question.source.chapter ? `, ${question.source.chapter}` : ''}
+                    {question.source.page_number ? `, Page ${question.source.page_number}` : ''}
+                  </span>
                 </div>
               )}
             </div>
@@ -343,3 +398,4 @@ export default function QuestionDetailsModal({
     </div>
   );
 }
+

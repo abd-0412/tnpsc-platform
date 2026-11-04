@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { resolveSyllabusAncestry, buildSyllabusDiscoveryFilter } from '@/lib/syllabus-discovery';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,9 +73,9 @@ export async function GET(request: NextRequest) {
     }
 
     if (nodeId) {
-      query = query.or(
-        `syllabus->>lesson_id.eq.${nodeId},syllabus->>unit_id.eq.${nodeId},syllabus->>term_id.eq.${nodeId},syllabus->>class_id.eq.${nodeId}`
-      );
+      const ancestry = await resolveSyllabusAncestry(supabase, nodeId);
+      const orFilter = buildSyllabusDiscoveryFilter(ancestry);
+      query = query.or(orFilter);
     }
 
     query = query.order('id', { ascending: true }).limit(limit);

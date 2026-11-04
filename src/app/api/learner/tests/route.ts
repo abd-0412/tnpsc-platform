@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { resolveSyllabusAncestry, buildSyllabusDiscoveryFilter } from '@/lib/syllabus-discovery';
 
 export const dynamic = 'force-dynamic';
 
@@ -164,12 +165,15 @@ export async function POST(request: NextRequest) {
       testTitleTa = `${node?.title_ta || 'பாடத்திட்டம்'} - மாதிரித் தேர்வு`;
       testTitleEn = `${node?.title_en || 'Syllabus'} - Practice Test`;
 
-      // Find all published questions matching syllabus
+      // Find all published questions matching syllabus including broad scopes
+      const ancestry = await resolveSyllabusAncestry(supabase, syllabus_node_id);
+      const orFilter = buildSyllabusDiscoveryFilter(ancestry);
+
       const { data: qData, error: qErr } = await supabase
         .from('questions')
         .select('*')
         .eq('is_archived', false)
-        .or(`syllabus->>lesson_id.eq.${syllabus_node_id},syllabus->>unit_id.eq.${syllabus_node_id},syllabus->>term_id.eq.${syllabus_node_id},syllabus->>class_id.eq.${syllabus_node_id}`)
+        .or(orFilter)
         .order('id', { ascending: true })
         .limit(500);
 

@@ -71,34 +71,44 @@ export default function ImportCentrePage() {
   const [mappingStrategy, setMappingStrategy] = useState<MappingStrategy>('fill_missing_with_common');
 
   // Hierarchy selections
-  const [selectedExam, setSelectedExam] = useState('group_4');
+  const [selectedExam, setSelectedExam] = useState('all_groups');
   const [selectedClass, setSelectedClass] = useState('std-6th');
   const [selectedSubject, setSelectedSubject] = useState('general_tamil');
-  const [selectedTerm, setSelectedTerm] = useState('std-6th-term-1');
-  const [selectedUnit, setSelectedUnit] = useState('std-6-t1-i1');
-  const [selectedLesson, setSelectedLesson] = useState('');
+  const [selectedTerm, setSelectedTerm] = useState('all');
+  const [selectedUnit, setSelectedUnit] = useState('all');
+  const [selectedLesson, setSelectedLesson] = useState('all');
 
-  // Dynamic syllabus nodes from database
+  // Dynamic syllabus nodes and exams from database
   const [allNodes, setAllNodes] = useState<any[]>([]);
+  const [exams, setExams] = useState<any[]>([]);
   const [syllabusLoading, setSyllabusLoading] = useState(false);
 
-  // Load syllabus taxonomy on mount
+  // Load syllabus taxonomy and exams on mount
   useEffect(() => {
-    async function loadSyllabusHierarchy() {
+    async function loadSyllabusAndExams() {
       setSyllabusLoading(true);
       try {
-        const res = await fetch('/api/admin/syllabus');
-        const data = await res.json();
-        if (data.nodes) {
-          setAllNodes(data.nodes);
+        const [resSyllabus, resExams] = await Promise.all([
+          fetch('/api/admin/syllabus'),
+          fetch('/api/admin/exams'),
+        ]);
+
+        const dataSyllabus = await resSyllabus.json();
+        if (dataSyllabus.nodes) {
+          setAllNodes(dataSyllabus.nodes);
+        }
+
+        const dataExams = await resExams.json();
+        if (dataExams.exams) {
+          setExams(dataExams.exams);
         }
       } catch (err) {
-        console.error('Failed to load syllabus taxonomy:', err);
+        console.error('Failed to load syllabus taxonomy or exams:', err);
       } finally {
         setSyllabusLoading(false);
       }
     }
-    loadSyllabusHierarchy();
+    loadSyllabusAndExams();
   }, []);
 
   // Filtered dropdown lists based on parent IDs
@@ -116,41 +126,59 @@ export default function ImportCentrePage() {
   }, [allNodes, selectedClass]);
 
   const unitOptions = useMemo(() => {
-    if (!selectedTerm) return [];
+    if (!selectedTerm || selectedTerm === 'all') return [];
     return allNodes.filter((n) => n.level === 'unit' && n.parent_id === selectedTerm);
   }, [allNodes, selectedTerm]);
 
   const lessonOptions = useMemo(() => {
-    if (!selectedUnit) return [];
+    if (!selectedUnit || selectedUnit === 'all') return [];
     return allNodes.filter((n) => n.level === 'lesson' && n.parent_id === selectedUnit);
   }, [allNodes, selectedUnit]);
 
   // Handle Class change -> reset lower levels
   const handleClassChange = (newClass: string) => {
     setSelectedClass(newClass);
-    const availableTerms = allNodes.filter((n) => n.level === 'term' && n.parent_id === newClass);
-    const firstTerm = availableTerms[0]?.id || '';
-    setSelectedTerm(firstTerm);
-
-    const availableUnits = allNodes.filter((n) => n.level === 'unit' && n.parent_id === firstTerm);
-    const firstUnit = availableUnits[0]?.id || '';
-    setSelectedUnit(firstUnit);
-    setSelectedLesson('');
+    setSelectedTerm('all');
+    setSelectedUnit('all');
+    setSelectedLesson('all');
   };
 
   // Handle Term change -> reset lower levels
   const handleTermChange = (newTerm: string) => {
     setSelectedTerm(newTerm);
-    const availableUnits = allNodes.filter((n) => n.level === 'unit' && n.parent_id === newTerm);
-    const firstUnit = availableUnits[0]?.id || '';
-    setSelectedUnit(firstUnit);
-    setSelectedLesson('');
+    setSelectedUnit('all');
+    setSelectedLesson('all');
   };
 
-  // Handle Unit change
+  // Handle Unit change -> reset lower level
   const handleUnitChange = (newUnit: string) => {
     setSelectedUnit(newUnit);
-    setSelectedLesson('');
+    setSelectedLesson('all');
+  };
+
+  // Handle Lesson change
+  const handleLessonChange = (newLesson: string) => {
+    setSelectedLesson(newLesson);
+  };
+
+  // Build complete common mapping payload with explicit scopes
+  const buildCommonMappingPayload = () => {
+    const isAllTerms = selectedTerm === 'all';
+    const isAllIyals = isAllTerms || selectedUnit === 'all';
+    const isAllLessons = isAllIyals || selectedLesson === 'all';
+
+    return {
+      exam_id: selectedExam,
+      exam_scope: selectedExam === 'all_groups' ? 'all_groups' : 'selected',
+      class_id: selectedClass,
+      subject_id: selectedSubject,
+      term_id: isAllTerms ? null : selectedTerm,
+      term_scope: isAllTerms ? 'all' : 'specific',
+      unit_id: isAllIyals ? null : selectedUnit,
+      unit_scope: isAllIyals ? 'all' : 'specific',
+      lesson_id: isAllLessons ? null : selectedLesson,
+      lesson_scope: isAllLessons ? 'all' : 'specific',
+    };
   };
 
   // Handle file selection
@@ -202,14 +230,7 @@ export default function ImportCentrePage() {
     setStatusMessage(`Validating questions and checking taxonomy against database...`);
 
     try {
-      const commonMapping = {
-        exam_id: selectedExam,
-        class_id: selectedClass,
-        subject_id: selectedSubject,
-        term_id: selectedTerm,
-        unit_id: selectedUnit,
-        lesson_id: selectedLesson,
-      };
+      const commonMapping = buildCommonMappingPayload();
 
       const res = await fetch('/api/admin/questions/import', {
         method: 'POST',
@@ -260,14 +281,7 @@ export default function ImportCentrePage() {
     setStatusMessage('Importing questions into Supabase in Draft status...');
 
     try {
-      const commonMapping = {
-        exam_id: selectedExam,
-        class_id: selectedClass,
-        subject_id: selectedSubject,
-        term_id: selectedTerm,
-        unit_id: selectedUnit,
-        lesson_id: selectedLesson,
-      };
+      const commonMapping = buildCommonMappingPayload();
 
       const res = await fetch('/api/admin/questions/import', {
         method: 'POST',
@@ -377,9 +391,21 @@ export default function ImportCentrePage() {
               onChange={(e) => setSelectedExam(e.target.value)}
               className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
             >
-              <option value="group_4">Group 4 (VAO & JA)</option>
-              <option value="group_2">Group 2 (Interview)</option>
-              <option value="group_2a">Group 2A (Non-Int)</option>
+              <option value="all_groups">All Groups / Common (அனைத்து குரூப் தேர்வுகள்)</option>
+              {exams.length > 0 ? (
+                exams.map((ex) => (
+                  <option key={ex.id} value={ex.id}>
+                    {ex.title_en} ({ex.title_ta})
+                  </option>
+                ))
+              ) : (
+                <>
+                  <option value="group_4">Group 4 (VAO & JA)</option>
+                  <option value="group_2">Group 2 (Interview)</option>
+                  <option value="group_2a">Group 2A (Non-Int)</option>
+                  <option value="group_1">Group 1 (Services)</option>
+                </>
+              )}
             </select>
           </div>
 
@@ -393,13 +419,23 @@ export default function ImportCentrePage() {
               onChange={(e) => handleClassChange(e.target.value)}
               className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
             >
-              <option value="std-6th">6-ஆம் வகுப்பு (6th Std)</option>
-              <option value="std-7th">7-ஆம் வகுப்பு (7th Std)</option>
-              <option value="std-8th">8-ஆம் வகுப்பு (8th Std)</option>
-              <option value="std-9th">9-ஆம் வகுப்பு (9th Std)</option>
-              <option value="std-10th">10-ஆம் வகுப்பு (10th Std)</option>
-              <option value="std-11th">11-ஆம் வகுப்பு (11th Std)</option>
-              <option value="std-12th">12-ஆம் வகுப்பு (12th Std)</option>
+              {classOptions.length > 0 ? (
+                classOptions.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.title_ta || c.title_en}
+                  </option>
+                ))
+              ) : (
+                <>
+                  <option value="std-6th">6-ஆம் வகுப்பு (6th Std)</option>
+                  <option value="std-7th">7-ஆம் வகுப்பு (7th Std)</option>
+                  <option value="std-8th">8-ஆம் வகுப்பு (8th Std)</option>
+                  <option value="std-9th">9-ஆம் வகுப்பு (9th Std)</option>
+                  <option value="std-10th">10-ஆம் வகுப்பு (10th Std)</option>
+                  <option value="std-11th">11-ஆம் வகுப்பு (11th Std)</option>
+                  <option value="std-12th">12-ஆம் வகுப்பு (12th Std)</option>
+                </>
+              )}
             </select>
           </div>
 
@@ -413,14 +449,24 @@ export default function ImportCentrePage() {
               onChange={(e) => setSelectedSubject(e.target.value)}
               className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
             >
-              <option value="general_tamil">பொதுத் தமிழ் (General Tamil)</option>
-              <option value="sub-polity">இந்திய ஆட்சியியல் (Polity)</option>
-              <option value="sub-history">வரலாறு (History)</option>
-              <option value="sub-aptitude">திறனறிவு (Aptitude)</option>
-              <option value="sub-geography">புவியியல் (Geography)</option>
-              <option value="sub-economy">பொருளாதாரம் (Economy)</option>
-              <option value="sub-unit8">தமிழ் சமுதாய வரலாறு (Unit 8)</option>
-              <option value="sub-unit9">தமிழக நிர்வாகம் (Unit 9)</option>
+              {subjectOptions.length > 0 ? (
+                subjectOptions.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.title_ta || s.title_en}
+                  </option>
+                ))
+              ) : (
+                <>
+                  <option value="general_tamil">பொதுத் தமிழ் (General Tamil)</option>
+                  <option value="sub-polity">இந்திய ஆட்சியியல் (Polity)</option>
+                  <option value="sub-history">வரலாறு (History)</option>
+                  <option value="sub-aptitude">திறனறிவு (Aptitude)</option>
+                  <option value="sub-geography">புவியியல் (Geography)</option>
+                  <option value="sub-economy">பொருளாதாரம் (Economy)</option>
+                  <option value="sub-unit8">தமிழ் சமுதாய வரலாறு (Unit 8)</option>
+                  <option value="sub-unit9">தமிழக நிர்வாகம் (Unit 9)</option>
+                </>
+              )}
             </select>
           </div>
 
@@ -434,10 +480,11 @@ export default function ImportCentrePage() {
               onChange={(e) => handleTermChange(e.target.value)}
               className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
             >
+              <option value="all">All Terms (முழு பாடநூல் / அனைத்து பருவங்கள்)</option>
               {termOptions.length > 0 ? (
                 termOptions.map((term) => (
                   <option key={term.id} value={term.id}>
-                    {term.title_ta}
+                    {term.title_ta || term.title_en}
                   </option>
                 ))
               ) : (
@@ -452,18 +499,22 @@ export default function ImportCentrePage() {
 
           {/* 5. Unit / Iyal */}
           <div className="space-y-1">
-            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+            <label className={`text-[11px] font-bold uppercase tracking-wider block ${
+              selectedTerm === 'all' ? 'text-slate-600' : 'text-slate-400'
+            }`}>
               5. இயல் / அலகு (Iyal / Unit)
             </label>
             <select
               value={selectedUnit}
               onChange={(e) => handleUnitChange(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
+              disabled={selectedTerm === 'all'}
+              className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500 disabled:opacity-40 disabled:cursor-not-allowed"
             >
+              <option value="all">All Iyals in this Term (இப்பருவத்தின் அனைத்து இயல்கள்)</option>
               {unitOptions.length > 0 ? (
                 unitOptions.map((unit) => (
                   <option key={unit.id} value={unit.id}>
-                    {unit.title_ta}
+                    {unit.title_ta || unit.title_en}
                   </option>
                 ))
               ) : (
@@ -478,18 +529,21 @@ export default function ImportCentrePage() {
 
           {/* 6. Lesson */}
           <div className="space-y-1">
-            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-              6. பாடம் (Lesson - Optional)
+            <label className={`text-[11px] font-bold uppercase tracking-wider block ${
+              selectedTerm === 'all' || selectedUnit === 'all' ? 'text-slate-600' : 'text-slate-400'
+            }`}>
+              6. பாடம் (Lesson)
             </label>
             <select
               value={selectedLesson}
-              onChange={(e) => setSelectedLesson(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
+              onChange={(e) => handleLessonChange(e.target.value)}
+              disabled={selectedTerm === 'all' || selectedUnit === 'all'}
+              className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <option value="">அனைத்து பாடங்கள் (All in Iyal)</option>
+              <option value="all">All Lessons in this Iyal (இவ்வியலின் அனைத்து பாடங்கள்)</option>
               {lessonOptions.map((l) => (
                 <option key={l.id} value={l.id}>
-                  {l.title_ta}
+                  {l.title_ta || l.title_en}
                 </option>
               ))}
             </select>
@@ -497,15 +551,52 @@ export default function ImportCentrePage() {
         </div>
 
         {/* Active mapping preview badge */}
-        <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-700/60 text-xs text-slate-300 flex items-center space-x-2">
-          <Info className="w-4 h-4 text-amber-400 shrink-0" />
-          <span>
-            Selected mapping will be linked as:{' '}
-            <code className="text-amber-400">
-              Exam: {selectedExam} | Subject: {selectedSubject} | Term: {selectedTerm} | Unit: {selectedUnit}
-              {selectedLesson ? ` | Lesson: ${selectedLesson}` : ''}
-            </code>
-          </span>
+        <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-amber-500/30 text-xs text-slate-300 space-y-2 shadow-inner">
+          <div className="flex items-center space-x-2 text-amber-400 font-bold uppercase tracking-wider text-[11px]">
+            <Info className="w-4 h-4 shrink-0" />
+            <span>Active Mapping Scope Summary (தேர்ந்தெடுக்கப்பட்ட பாடத்திட்ட எல்லை)</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 pt-1 font-mono text-[11px]">
+            <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/30">
+              🎯 Exam: {selectedExam === 'all_groups' ? 'All Groups / Common (அனைத்து குரூப்)' : selectedExam}
+            </span>
+            <span className="text-slate-600">→</span>
+            <span className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-200 border border-slate-700">
+              📚 Class: {selectedClass}
+            </span>
+            <span className="text-slate-600">→</span>
+            <span className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-200 border border-slate-700">
+              📖 Subject: {selectedSubject}
+            </span>
+            <span className="text-slate-600">→</span>
+            <span className={`px-2.5 py-1 rounded-lg border ${
+              selectedTerm === 'all'
+                ? 'bg-purple-500/10 text-purple-300 border-purple-500/30 font-semibold'
+                : 'bg-slate-800 text-slate-200 border border-slate-700'
+            }`}>
+              🗓️ Term: {selectedTerm === 'all' ? 'All Terms (அனைத்துப் பருவம்)' : selectedTerm}
+            </span>
+            <span className="text-slate-600">→</span>
+            <span className={`px-2.5 py-1 rounded-lg border ${
+              selectedTerm === 'all'
+                ? 'bg-slate-800/40 text-slate-500 border-slate-800'
+                : selectedUnit === 'all'
+                ? 'bg-purple-500/10 text-purple-300 border-purple-500/30 font-semibold'
+                : 'bg-slate-800 text-slate-200 border border-slate-700'
+            }`}>
+              📑 Unit: {selectedTerm === 'all' ? '— (Entire Subject)' : selectedUnit === 'all' ? 'All Iyals (அனைத்து இயல்)' : selectedUnit}
+            </span>
+            <span className="text-slate-600">→</span>
+            <span className={`px-2.5 py-1 rounded-lg border ${
+              selectedTerm === 'all' || selectedUnit === 'all'
+                ? 'bg-slate-800/40 text-slate-500 border-slate-800'
+                : selectedLesson === 'all'
+                ? 'bg-purple-500/10 text-purple-300 border-purple-500/30 font-semibold'
+                : 'bg-slate-800 text-slate-200 border border-slate-700'
+            }`}>
+              📝 Lesson: {selectedTerm === 'all' || selectedUnit === 'all' ? '— (Entire Unit)' : selectedLesson === 'all' ? 'All Lessons (அனைத்துப் பாடம்)' : selectedLesson}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -680,7 +771,7 @@ export default function ImportCentrePage() {
                     <div className="flex items-center space-x-2">
                       <span className="font-mono font-bold text-amber-400">{q.id}</span>
                       <span className="text-indigo-300 font-mono text-[10px]">
-                        [{q.syllabus?.unit_id || 'unit'} → {q.syllabus?.lesson_id || 'lesson'}]
+                        [{q.syllabus?.exam_scope === 'all_groups' ? 'All Groups' : q.exam_mappings?.map((m: any) => m.exam_id).join(', ')} | {q.syllabus?.term_scope === 'all' ? 'All Terms' : q.syllabus?.term_id || 'All Terms'} → {q.syllabus?.unit_scope === 'all' ? 'All Iyals' : q.syllabus?.unit_id || 'All Iyals'} → {q.syllabus?.lesson_scope === 'all' ? 'All Lessons' : q.syllabus?.lesson_id || 'All Lessons'}]
                       </span>
                     </div>
                     <p className="text-slate-200 font-tamil truncate">{q.texts?.ta?.question}</p>
