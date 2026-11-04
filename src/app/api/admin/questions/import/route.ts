@@ -5,7 +5,7 @@ import { parseCSV, convertCsvRowToQuestionRecord } from '@/lib/csv-importer';
 
 export const dynamic = 'force-dynamic';
 
-function normalizeQuestionRecord(raw: any): any {
+export function normalizeQuestionRecord(raw: any): any {
   if (!raw || typeof raw !== 'object') return raw;
   const norm = { ...raw };
 
@@ -262,10 +262,11 @@ export async function POST(request: NextRequest) {
       seenIds.add(recordId);
 
       // Ensure defaults for workflow
+      const incomingStatus = normalized.workflow?.status || 'published';
       if (!normalized.workflow || typeof normalized.workflow !== 'object') {
-        normalized.workflow = { status: 'draft', verification_comments: [] };
+        normalized.workflow = { status: incomingStatus, verification_comments: [] };
       } else {
-        normalized.workflow.status = 'draft'; // Always imported as Draft
+        normalized.workflow.status = incomingStatus;
         if (!Array.isArray(normalized.workflow.verification_comments)) {
           normalized.workflow.verification_comments = [];
         }
