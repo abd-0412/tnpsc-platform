@@ -93,7 +93,7 @@ export default function AdminTestsPage() {
 
   const fetchQuestions = async () => {
     try {
-      const res = await fetch('/api/admin/questions?limit=300');
+      const res = await fetch('/api/admin/questions?limit=1000');
       const data = await res.json();
       if (res.ok) {
         setAvailableQuestions(data.questions || []);

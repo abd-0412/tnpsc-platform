@@ -108,6 +108,44 @@ export function normalizeQuestionRecord(raw: any): any {
     if (!norm.syllabus.subject_id) {
       norm.syllabus.subject_id = 'general_tamil';
     }
+
+    // Map 6th Term 1 Units & Lessons accurately
+    if (norm.id) {
+      const match6t1 = norm.id.match(/^6th-t1-u(\d)-(\d+)$/);
+      if (match6t1) {
+        const uNum = parseInt(match6t1[1], 10);
+        const qNum = parseInt(match6t1[2], 10);
+        if (uNum === 1) {
+          norm.syllabus.unit_id = 'std-6-t1-i1';
+          if (qNum <= 18) norm.syllabus.lesson_id = 'std-6-t1-i1-l1';
+          else if (qNum <= 44) norm.syllabus.lesson_id = 'std-6-t1-i1-l2';
+          else if (qNum <= 60) norm.syllabus.lesson_id = 'std-6-t1-i1-l3';
+          else norm.syllabus.lesson_id = 'std-6-t1-i1-l4';
+        } else if (uNum === 2) {
+          norm.syllabus.unit_id = 'std-6-t1-i2';
+          if (qNum <= 12) norm.syllabus.lesson_id = 'std-6-t1-i2-l1';
+          else if (qNum <= 40) norm.syllabus.lesson_id = 'std-6-t1-i2-l2';
+          else if (qNum <= 54) norm.syllabus.lesson_id = 'std-6-t1-i2-l3';
+          else if (qNum <= 68) norm.syllabus.lesson_id = 'std-6-t1-i2-l4';
+          else norm.syllabus.lesson_id = 'std-6-t1-i2-l5';
+        } else if (uNum === 3) {
+          norm.syllabus.unit_id = 'std-6-t1-i3';
+          if (qNum <= 12) norm.syllabus.lesson_id = 'std-6-t1-i3-l1';
+          else if (qNum <= 26) norm.syllabus.lesson_id = 'std-6-t1-i3-l2';
+          else if (qNum <= 48) norm.syllabus.lesson_id = 'std-6-t1-i3-l3';
+          else if (qNum <= 64) norm.syllabus.lesson_id = 'std-6-t1-i3-l4';
+          else norm.syllabus.lesson_id = 'std-6-t1-i3-l5';
+        }
+      } else if (norm.id.includes('pyq')) {
+        norm.syllabus.unit_id = 'pyq_bridging';
+        norm.syllabus.lesson_id = 'std-6th-term-1-pyq';
+      }
+    }
+
+    // Short-code aliases mapping
+    if (norm.syllabus.unit_id === 'u1') norm.syllabus.unit_id = 'std-6-t1-i1';
+    if (norm.syllabus.unit_id === 'u2') norm.syllabus.unit_id = 'std-6-t1-i2';
+    if (norm.syllabus.unit_id === 'u3') norm.syllabus.unit_id = 'std-6-t1-i3';
   }
 
   // 8. Media normalization
