@@ -19,7 +19,17 @@ export type QuestionKind =
 export type ExamLevel = 'prelims' | 'mains' | 'foundation';
 export type DifficultyLevel = 'easy' | 'medium' | 'hard';
 export type LanguageStatus = 'bilingual' | 'tamil_only' | 'english_only';
-export type WorkflowStatus = 'draft' | 'under_review' | 'verified' | 'published' | 'rejected';
+export type WorkflowStatus = 'draft' | 'under_review' | 'under_revision' | 'verified' | 'published' | 'rejected';
+
+export interface WorkflowHistoryEntry {
+  from_status: string;
+  to_status: string;
+  action: string;
+  by_id?: string;
+  by_name?: string;
+  reason?: string;
+  timestamp: string;
+}
 
 export interface ExamMapping {
   exam_id: 'group_4' | 'group_2' | 'group_2a' | string;
@@ -146,9 +156,12 @@ export interface VerificationComment {
 
 export interface QuestionWorkflow {
   status: WorkflowStatus;
+  verification_status?: 'pending' | 'in_review' | 'verified' | 'rejected';
   verified_by?: string | null;
   verified_at?: string | null;
+  rejection_reason?: string | null;
   verification_comments: VerificationComment[];
+  history?: WorkflowHistoryEntry[];
 }
 
 export interface Question {
@@ -171,6 +184,12 @@ export interface Question {
   workflow: QuestionWorkflow;
   version: number;
   is_archived?: boolean;
+  archived_at?: string | null;
+  archived_by?: string | null;
+  archive_reason?: string | null;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
+  deletion_reason?: string | null;
   created_by?: string;
   created_at?: string;
   updated_at?: string;

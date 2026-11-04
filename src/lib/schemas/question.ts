@@ -80,11 +80,14 @@ export const VerificationCommentSchema = z.object({
 });
 
 export const QuestionWorkflowSchema = z.object({
-  status: z.enum(['draft', 'under_review', 'verified', 'published', 'rejected']).default('draft'),
+  status: z.enum(['draft', 'under_review', 'under_revision', 'verified', 'published', 'rejected']).default('draft'),
+  verification_status: z.enum(['pending', 'in_review', 'verified', 'rejected']).optional().default('pending'),
   verified_by: z.string().nullable().optional(),
   verified_at: z.string().nullable().optional(),
+  rejection_reason: z.string().nullable().optional(),
   verification_comments: z.array(VerificationCommentSchema).default([]),
-}).passthrough().default({ status: 'draft', verification_comments: [] });
+  history: z.array(z.any()).default([]),
+}).passthrough().default({ status: 'draft', verification_status: 'pending', verification_comments: [], history: [] });
 
 export const QuestionSchema = z.object({
   id: z.string().min(1, 'Question ID is required'),
@@ -124,6 +127,12 @@ export const QuestionSchema = z.object({
   workflow: QuestionWorkflowSchema,
   version: z.union([z.number(), z.record(z.string(), z.any())]).default(1),
   is_archived: z.boolean().default(false),
+  archived_at: z.string().nullable().optional(),
+  archived_by: z.string().nullable().optional(),
+  archive_reason: z.string().nullable().optional(),
+  deleted_at: z.string().nullable().optional(),
+  deleted_by: z.string().nullable().optional(),
+  deletion_reason: z.string().nullable().optional(),
   created_by: z.string().optional(),
   created_at: z.string().optional(),
   updated_at: z.string().optional(),

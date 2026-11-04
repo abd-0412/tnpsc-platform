@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { QuestionSchema } from '@/lib/schemas/question';
+import { logAuditEvent } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,34 +32,61 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('q') || '';
     const exam = searchParams.get('exam') || '';
     const subject = searchParams.get('subject') || '';
+    const term = searchParams.get('term') || '';
+    const unit = searchParams.get('unit') || '';
+    const lesson = searchParams.get('lesson') || '';
     const difficulty = searchParams.get('difficulty') || '';
     const kind = searchParams.get('kind') || '';
     const status = searchParams.get('status') || '';
+    const tab = searchParams.get('tab') || 'active'; // 'active' | 'archived' | 'deleted'
     const page = parseInt(searchParams.get('page') || '1', 10);
-    const limit = parseInt(searchParams.get('limit') || '20', 10);
+    const limit = parseInt(searchParams.get('limit') || '15', 10);
     const offset = (page - 1) * limit;
 
     let query = supabase
       .from('questions')
       .select('*', { count: 'exact' })
-      .eq('is_archived', false)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
+    // Apply tab constraint
+    if (tab === 'archived') {
+      query = query.eq('is_archived', true).is('deleted_at', null);
+    } else if (tab === 'deleted') {
+      query = query.not('deleted_at', 'is', null);
+    } else {
+      // Default: active questions
+      query = query.eq('is_archived', false).is('deleted_at', null);
+    }
+
+    // Filters
     if (difficulty) {
       query = query.eq('difficulty', difficulty);
     }
     if (kind) {
       query = query.eq('kind', kind);
     }
-    if (status) {
-      query = query.eq('workflow->>status', status);
+    if (status && status !== 'all') {
+      if (status === 'under_revision' || status === 'under_review') {
+        query = query.or('workflow->>status.eq.under_revision,workflow->>status.eq.under_review');
+      } else {
+        query = query.eq('workflow->>status', status);
+      }
     }
     if (subject) {
       query = query.eq('syllabus->>subject_id', subject);
     }
+    if (term) {
+      query = query.eq('syllabus->>term_id', term);
+    }
+    if (unit) {
+      query = query.eq('syllabus->>unit_id', unit);
+    }
+    if (lesson) {
+      query = query.eq('syllabus->>lesson_id', lesson);
+    }
 
-    // Text search in Tamil and English texts
+    // Text search in Tamil, English, and Question ID
     if (search) {
       query = query.or(
         `texts->ta->>question.ilike.%${search}%,texts->en->>question.ilike.%${search}%,id.ilike.%${search}%`
@@ -72,6 +100,25 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // Aggregate counts for tabs
+    const [
+      { count: activeCount },
+      { count: archivedCount },
+      { count: deletedCount },
+      { count: draftCount },
+      { count: revisionCount },
+      { count: publishedCount },
+      { count: rejectedCount },
+    ] = await Promise.all([
+      supabase.from('questions').select('*', { count: 'exact', head: true }).eq('is_archived', false).is('deleted_at', null),
+      supabase.from('questions').select('*', { count: 'exact', head: true }).eq('is_archived', true).is('deleted_at', null),
+      supabase.from('questions').select('*', { count: 'exact', head: true }).not('deleted_at', 'is', null),
+      supabase.from('questions').select('*', { count: 'exact', head: true }).eq('workflow->>status', 'draft').eq('is_archived', false).is('deleted_at', null),
+      supabase.from('questions').select('*', { count: 'exact', head: true }).or('workflow->>status.eq.under_revision,workflow->>status.eq.under_review').eq('is_archived', false).is('deleted_at', null),
+      supabase.from('questions').select('*', { count: 'exact', head: true }).eq('workflow->>status', 'published').eq('is_archived', false).is('deleted_at', null),
+      supabase.from('questions').select('*', { count: 'exact', head: true }).eq('workflow->>status', 'rejected').eq('is_archived', false).is('deleted_at', null),
+    ]);
+
     return NextResponse.json({
       questions,
       pagination: {
@@ -79,6 +126,15 @@ export async function GET(request: NextRequest) {
         limit,
         total: count || 0,
         totalPages: Math.ceil((count || 0) / limit),
+      },
+      counts: {
+        active: activeCount || 0,
+        archived: archivedCount || 0,
+        deleted: deletedCount || 0,
+        drafts: draftCount || 0,
+        under_revision: revisionCount || 0,
+        published: publishedCount || 0,
+        rejected: rejectedCount || 0,
       },
     });
   } catch (err: any) {
@@ -101,7 +157,7 @@ export async function POST(request: NextRequest) {
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('role')
+      .select('id, full_name, role')
       .eq('id', user.id)
       .single();
 
@@ -118,12 +174,39 @@ export async function POST(request: NextRequest) {
       body.id = `TNPSC-${prefix.toUpperCase()}-${timestamp}`;
     }
 
+    const now = new Date().toISOString();
+    const adminName = profile.full_name || 'Admin';
+
+    // Critical: New questions MUST always enter Draft / Pending Review
+    const initialWorkflow = {
+      status: 'draft',
+      verification_status: 'pending',
+      verified_by: null,
+      verified_at: null,
+      verification_comments: [],
+      history: [
+        {
+          from_status: '',
+          to_status: 'draft',
+          action: 'create',
+          by_id: user.id,
+          by_name: adminName,
+          timestamp: now,
+        },
+      ],
+    };
+
     // Validate with Zod
     const validatedData = QuestionSchema.parse({
       ...body,
+      workflow: initialWorkflow,
+      is_archived: false,
+      deleted_at: null,
+      deleted_by: null,
+      deletion_reason: null,
       created_by: user.id,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      created_at: now,
+      updated_at: now,
     });
 
     const { data, error } = await supabase
@@ -137,7 +220,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    return NextResponse.json({ question: data, message: 'Question created successfully' }, { status: 201 });
+    // Log Audit Event
+    await logAuditEvent(supabase, {
+      userId: user.id,
+      action: 'question_create',
+      entityType: 'question',
+      entityId: data.id,
+      details: {
+        kind: data.kind,
+        difficulty: data.difficulty,
+        syllabus: data.syllabus,
+      },
+    });
+
+    return NextResponse.json(
+      { question: data, message: 'Question created successfully in Draft status.' },
+      { status: 201 }
+    );
   } catch (err: any) {
     console.error('Error creating question:', err);
     if (err.errors) {
@@ -146,4 +245,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
-

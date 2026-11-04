@@ -2,10 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { QuestionSchema } from '@/lib/schemas/question';
 import { parseCSV, convertCsvRowToQuestionRecord } from '@/lib/csv-importer';
+import { logAuditEvent, logBulkAuditEvents, AuditLogEntry } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
-export function normalizeQuestionRecord(raw: any): any {
+export function normalizeQuestionRecord(
+  raw: any,
+  commonMapping?: Record<string, string>,
+  mappingStrategy?: string
+): any {
   if (!raw || typeof raw !== 'object') return raw;
   const norm = { ...raw };
 
@@ -36,31 +41,26 @@ export function normalizeQuestionRecord(raw: any): any {
     // Tamil Content
     if (norm.texts.ta) {
       norm.texts.ta = { ...norm.texts.ta };
-      // If question is inside blocks array
       if (!norm.texts.ta.question && Array.isArray(norm.texts.ta.blocks) && norm.texts.ta.blocks[0]?.content) {
         norm.texts.ta.question = norm.texts.ta.blocks[0].content;
       }
-      // If options is an object { A: '...', B: '...' }
       if (norm.texts.ta.options && !Array.isArray(norm.texts.ta.options) && typeof norm.texts.ta.options === 'object') {
         norm.texts.ta.options = Object.entries(norm.texts.ta.options).map(([key, val]) => ({
           id: key,
           text: String(val || ''),
         }));
       }
-      if (!norm.texts.ta.explanation) {
-        norm.texts.ta.explanation = '';
-      }
+      if (!norm.texts.ta.explanation) norm.texts.ta.explanation = '';
     }
 
     // English Content
     if (norm.texts.en) {
-      // Check if English actually has content
       let enQuestion = norm.texts.en.question;
       if (!enQuestion && Array.isArray(norm.texts.en.blocks) && norm.texts.en.blocks[0]?.content) {
         enQuestion = norm.texts.en.blocks[0].content;
       }
 
-      if (enQuestion) {
+      if (enQuestion && enQuestion.trim()) {
         norm.texts.en = { ...norm.texts.en, question: enQuestion };
         if (norm.texts.en.options && !Array.isArray(norm.texts.en.options) && typeof norm.texts.en.options === 'object') {
           norm.texts.en.options = Object.entries(norm.texts.en.options)
@@ -72,7 +72,6 @@ export function normalizeQuestionRecord(raw: any): any {
         }
         if (!norm.texts.en.explanation) norm.texts.en.explanation = '';
       } else {
-        // Remove empty English block so it validates against optional schema
         delete norm.texts.en;
       }
     }
@@ -94,58 +93,83 @@ export function normalizeQuestionRecord(raw: any): any {
       }
       return m;
     });
+  } else if (!norm.exam_mappings) {
+    norm.exam_mappings = [{ exam_id: commonMapping?.exam_id || 'group_4', is_relevant: true }];
   }
 
   // 7. Syllabus normalization
-  if (norm.syllabus) {
-    norm.syllabus = { ...norm.syllabus };
-    if (norm.syllabus.class && !norm.syllabus.class_id) {
-      norm.syllabus.class_id = `std-${norm.syllabus.class}th`;
-    }
-    if (norm.syllabus.term && !norm.syllabus.term_id) {
-      norm.syllabus.term_id = `std-${norm.syllabus.class || '6'}th-term-${norm.syllabus.term}`;
-    }
-    if (!norm.syllabus.subject_id) {
-      norm.syllabus.subject_id = 'general_tamil';
-    }
+  norm.syllabus = { ...(norm.syllabus || {}) };
+  if (norm.syllabus.class && !norm.syllabus.class_id) {
+    norm.syllabus.class_id = `std-${norm.syllabus.class}th`;
+  }
+  if (norm.syllabus.term && !norm.syllabus.term_id) {
+    norm.syllabus.term_id = `std-${norm.syllabus.class || '6'}th-term-${norm.syllabus.term}`;
+  }
+  if (!norm.syllabus.subject_id) {
+    norm.syllabus.subject_id = commonMapping?.subject_id || 'general_tamil';
+  }
 
-    // Map 6th Term 1 Units & Lessons accurately
-    if (norm.id) {
-      const match6t1 = norm.id.match(/^6th-t1-u(\d)-(\d+)$/);
-      if (match6t1) {
-        const uNum = parseInt(match6t1[1], 10);
-        const qNum = parseInt(match6t1[2], 10);
-        if (uNum === 1) {
-          norm.syllabus.unit_id = 'std-6-t1-i1';
-          if (qNum <= 18) norm.syllabus.lesson_id = 'std-6-t1-i1-l1';
-          else if (qNum <= 44) norm.syllabus.lesson_id = 'std-6-t1-i1-l2';
-          else if (qNum <= 60) norm.syllabus.lesson_id = 'std-6-t1-i1-l3';
-          else norm.syllabus.lesson_id = 'std-6-t1-i1-l4';
-        } else if (uNum === 2) {
-          norm.syllabus.unit_id = 'std-6-t1-i2';
-          if (qNum <= 12) norm.syllabus.lesson_id = 'std-6-t1-i2-l1';
-          else if (qNum <= 40) norm.syllabus.lesson_id = 'std-6-t1-i2-l2';
-          else if (qNum <= 54) norm.syllabus.lesson_id = 'std-6-t1-i2-l3';
-          else if (qNum <= 68) norm.syllabus.lesson_id = 'std-6-t1-i2-l4';
-          else norm.syllabus.lesson_id = 'std-6-t1-i2-l5';
-        } else if (uNum === 3) {
-          norm.syllabus.unit_id = 'std-6-t1-i3';
-          if (qNum <= 12) norm.syllabus.lesson_id = 'std-6-t1-i3-l1';
-          else if (qNum <= 26) norm.syllabus.lesson_id = 'std-6-t1-i3-l2';
-          else if (qNum <= 48) norm.syllabus.lesson_id = 'std-6-t1-i3-l3';
-          else if (qNum <= 64) norm.syllabus.lesson_id = 'std-6-t1-i3-l4';
-          else norm.syllabus.lesson_id = 'std-6-t1-i3-l5';
-        }
-      } else if (norm.id.includes('pyq')) {
-        norm.syllabus.unit_id = 'pyq_bridging';
-        norm.syllabus.lesson_id = 'std-6th-term-1-pyq';
+  // Map 6th Term 1 Units & Lessons accurately
+  if (norm.id) {
+    const match6t1 = norm.id.match(/^6th-t1-u(\d)-(\d+)$/);
+    if (match6t1) {
+      const uNum = parseInt(match6t1[1], 10);
+      const qNum = parseInt(match6t1[2], 10);
+      if (uNum === 1) {
+        norm.syllabus.unit_id = 'std-6-t1-i1';
+        if (qNum <= 18) norm.syllabus.lesson_id = 'std-6-t1-i1-l1';
+        else if (qNum <= 44) norm.syllabus.lesson_id = 'std-6-t1-i1-l2';
+        else if (qNum <= 60) norm.syllabus.lesson_id = 'std-6-t1-i1-l3';
+        else norm.syllabus.lesson_id = 'std-6-t1-i1-l4';
+      } else if (uNum === 2) {
+        norm.syllabus.unit_id = 'std-6-t1-i2';
+        if (qNum <= 12) norm.syllabus.lesson_id = 'std-6-t1-i2-l1';
+        else if (qNum <= 40) norm.syllabus.lesson_id = 'std-6-t1-i2-l2';
+        else if (qNum <= 54) norm.syllabus.lesson_id = 'std-6-t1-i2-l3';
+        else if (qNum <= 68) norm.syllabus.lesson_id = 'std-6-t1-i2-l4';
+        else norm.syllabus.lesson_id = 'std-6-t1-i2-l5';
+      } else if (uNum === 3) {
+        norm.syllabus.unit_id = 'std-6-t1-i3';
+        if (qNum <= 12) norm.syllabus.lesson_id = 'std-6-t1-i3-l1';
+        else if (qNum <= 26) norm.syllabus.lesson_id = 'std-6-t1-i3-l2';
+        else if (qNum <= 48) norm.syllabus.lesson_id = 'std-6-t1-i3-l3';
+        else if (qNum <= 64) norm.syllabus.lesson_id = 'std-6-t1-i3-l4';
+        else norm.syllabus.lesson_id = 'std-6-t1-i3-l5';
+      }
+    } else if (norm.id.includes('pyq')) {
+      norm.syllabus.unit_id = 'pyq_bridging';
+      norm.syllabus.lesson_id = 'std-6th-term-1-pyq';
+    }
+  }
+
+  // Short-code aliases mapping
+  if (norm.syllabus.unit_id === 'u1') norm.syllabus.unit_id = 'std-6-t1-i1';
+  if (norm.syllabus.unit_id === 'u2') norm.syllabus.unit_id = 'std-6-t1-i2';
+  if (norm.syllabus.unit_id === 'u3') norm.syllabus.unit_id = 'std-6-t1-i3';
+
+  // Apply Common Syllabus Mapping
+  if (commonMapping && Object.keys(commonMapping).length > 0) {
+    if (mappingStrategy === 'override_with_common') {
+      if (commonMapping.class_id) norm.syllabus.class_id = commonMapping.class_id;
+      if (commonMapping.subject_id) norm.syllabus.subject_id = commonMapping.subject_id;
+      if (commonMapping.term_id) norm.syllabus.term_id = commonMapping.term_id;
+      if (commonMapping.unit_id) norm.syllabus.unit_id = commonMapping.unit_id;
+      if (commonMapping.lesson_id) norm.syllabus.lesson_id = commonMapping.lesson_id;
+      if (commonMapping.chapter_id) norm.syllabus.chapter_id = commonMapping.chapter_id;
+      if (commonMapping.exam_id) {
+        norm.exam_mappings = [{ exam_id: commonMapping.exam_id, is_relevant: true }];
+      }
+    } else if (mappingStrategy === 'fill_missing_with_common') {
+      if (!norm.syllabus.class_id && commonMapping.class_id) norm.syllabus.class_id = commonMapping.class_id;
+      if (!norm.syllabus.subject_id && commonMapping.subject_id) norm.syllabus.subject_id = commonMapping.subject_id;
+      if (!norm.syllabus.term_id && commonMapping.term_id) norm.syllabus.term_id = commonMapping.term_id;
+      if (!norm.syllabus.unit_id && commonMapping.unit_id) norm.syllabus.unit_id = commonMapping.unit_id;
+      if (!norm.syllabus.lesson_id && commonMapping.lesson_id) norm.syllabus.lesson_id = commonMapping.lesson_id;
+      if (!norm.syllabus.chapter_id && commonMapping.chapter_id) norm.syllabus.chapter_id = commonMapping.chapter_id;
+      if ((!norm.exam_mappings || norm.exam_mappings.length === 0) && commonMapping.exam_id) {
+        norm.exam_mappings = [{ exam_id: commonMapping.exam_id, is_relevant: true }];
       }
     }
-
-    // Short-code aliases mapping
-    if (norm.syllabus.unit_id === 'u1') norm.syllabus.unit_id = 'std-6-t1-i1';
-    if (norm.syllabus.unit_id === 'u2') norm.syllabus.unit_id = 'std-6-t1-i2';
-    if (norm.syllabus.unit_id === 'u3') norm.syllabus.unit_id = 'std-6-t1-i3';
   }
 
   // 8. Media normalization
@@ -201,7 +225,7 @@ export async function POST(request: NextRequest) {
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('role')
+      .select('id, full_name, role')
       .eq('id', user.id)
       .single();
 
@@ -210,7 +234,13 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { content, format } = body; // format: 'json' | 'jsonl'
+    const {
+      content,
+      format, // 'csv' | 'jsonl' | 'json'
+      mode = 'commit', // 'validate_preview' | 'commit'
+      commonMapping, // { exam_id, class_id, subject_id, term_id, unit_id, lesson_id, chapter_id }
+      mappingStrategy = 'fill_missing_with_common', // 'use_json_metadata' | 'fill_missing_with_common' | 'override_with_common'
+    } = body;
 
     if (!content || typeof content !== 'string') {
       return NextResponse.json({ error: 'File content must be provided as text' }, { status: 400 });
@@ -228,7 +258,6 @@ export async function POST(request: NextRequest) {
       const lines = content.split(/\r?\n/);
       lines.forEach((line, idx) => {
         const trimmed = line.trim();
-        // Automatically skip comments and empty lines
         if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('#') || trimmed.startsWith('/*')) {
           return;
         }
@@ -238,7 +267,7 @@ export async function POST(request: NextRequest) {
           rawRecords.push({ raw: parsed, lineIndex: idx + 1 });
         } catch (jsonErr: any) {
           rawRecords.push({
-            raw: { __parseError: `JSON syntax error: ${jsonErr.message}` },
+            raw: { __parseError: `JSON syntax error on line ${idx + 1}: ${jsonErr.message}` },
             lineIndex: idx + 1,
           });
         }
@@ -260,6 +289,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No valid records found in the uploaded file' }, { status: 400 });
     }
 
+    // Pre-fetch all active syllabus node IDs to validate references
+    const { data: dbSyllabusNodes } = await supabase
+      .from('syllabus_nodes')
+      .select('id, level')
+      .eq('is_active', true);
+
+    const validSyllabusNodeIds = new Set((dbSyllabusNodes || []).map((n) => n.id));
+
+    // Extract all candidate IDs to check existing questions in DB
+    const candidateIds: string[] = [];
+    rawRecords.forEach((item, idx) => {
+      const recId = item.raw.id || `TNPSC-IMP-${Date.now().toString(36)}-${item.lineIndex || idx + 1}`;
+      candidateIds.push(recId);
+    });
+
+    const { data: existingDbQuestions } = await supabase
+      .from('questions')
+      .select('id')
+      .in('id', candidateIds);
+
+    const existingDbIdSet = new Set((existingDbQuestions || []).map((q) => q.id));
+
     const validQuestions: any[] = [];
     const invalidRecords: Array<{
       lineIndex: number;
@@ -268,9 +319,17 @@ export async function POST(request: NextRequest) {
       raw: any;
     }> = [];
 
-    const seenIds = new Set<string>();
+    const seenIdsInBatch = new Set<string>();
+    let duplicateInFileCount = 0;
+    let existingInDbCount = 0;
+    let missingTamilCount = 0;
+    let missingEnglishCount = 0;
+    let missingAnswerCount = 0;
+    let invalidSyllabusCount = 0;
 
-    // Validate each record with Zod after normalization
+    const now = new Date().toISOString();
+    const adminName = profile.full_name || 'Admin';
+
     for (const item of rawRecords) {
       if (item.raw.__parseError) {
         invalidRecords.push({
@@ -281,84 +340,218 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // Normalize structure
-      const normalized = normalizeQuestionRecord(item.raw);
+      // Normalize record with syllabus mapping strategy
+      const normalized = normalizeQuestionRecord(item.raw, commonMapping, mappingStrategy);
 
-      // Check ID
       const recordId = normalized.id || `TNPSC-IMP-${Date.now().toString(36)}-${item.lineIndex}`;
       normalized.id = recordId;
 
-      if (seenIds.has(recordId)) {
-        invalidRecords.push({
-          lineIndex: item.lineIndex,
-          id: recordId,
-          errors: [`Duplicate Question ID '${recordId}' found within the import batch`],
-          raw: item.raw,
-        });
-        continue;
-      }
-      seenIds.add(recordId);
+      const errors: string[] = [];
 
-      // Ensure defaults for workflow
-      const incomingStatus = normalized.workflow?.status || 'published';
-      if (!normalized.workflow || typeof normalized.workflow !== 'object') {
-        normalized.workflow = { status: incomingStatus, verification_comments: [] };
+      // 1. Duplicate checks
+      if (seenIdsInBatch.has(recordId)) {
+        errors.push(`Duplicate Question ID '${recordId}' found within the import file`);
+        duplicateInFileCount++;
       } else {
-        normalized.workflow.status = incomingStatus;
-        if (!Array.isArray(normalized.workflow.verification_comments)) {
-          normalized.workflow.verification_comments = [];
-        }
+        seenIdsInBatch.add(recordId);
       }
 
-      if (!normalized.schema_version) normalized.schema_version = '1.0.0';
-      if (!normalized.version) normalized.version = 1;
+      if (existingDbIdSet.has(recordId)) {
+        existingInDbCount++;
+        // Note: For imports, existing ID will be an upsert if committed, but preview flags it
+      }
+
+      // 2. Bilingual content check
+      if (!normalized.texts?.ta?.question) {
+        errors.push('Missing Tamil question text (texts.ta.question is required)');
+        missingTamilCount++;
+      }
+      if (!normalized.texts?.en?.question) {
+        missingEnglishCount++; // warning/statistic, English is optional in bilingual schema
+      }
+
+      // 3. Answer check
+      if (
+        !normalized.answer?.correct_option_id &&
+        !normalized.answer?.correct_key &&
+        !normalized.answer?.match_pairs &&
+        !normalized.answer?.ordered_sequence &&
+        normalized.answer?.numeric_target === undefined
+      ) {
+        errors.push('Missing correct answer or key (answer.correct_option_id is required)');
+        missingAnswerCount++;
+      }
+
+      // 4. Validate syllabus nodes against database
+      if (normalized.syllabus?.unit_id && !validSyllabusNodeIds.has(normalized.syllabus.unit_id)) {
+        errors.push(`Unit ID '${normalized.syllabus.unit_id}' does not exist in syllabus_nodes`);
+        invalidSyllabusCount++;
+      }
+      if (normalized.syllabus?.lesson_id && !validSyllabusNodeIds.has(normalized.syllabus.lesson_id)) {
+        errors.push(`Lesson ID '${normalized.syllabus.lesson_id}' does not exist in syllabus_nodes`);
+        invalidSyllabusCount++;
+      }
+      if (normalized.syllabus?.chapter_id && !validSyllabusNodeIds.has(normalized.syllabus.chapter_id)) {
+        errors.push(`Chapter ID '${normalized.syllabus.chapter_id}' does not exist in syllabus_nodes`);
+        invalidSyllabusCount++;
+      }
+
+      // CRITICAL STATUS RULE:
+      // Every successfully imported question MUST be created with:
+      // workflow.status = "draft"
+      // workflow.verification_status = "pending"
+      // No imported question may become Published / Active automatically.
+      normalized.workflow = {
+        status: 'draft',
+        verification_status: 'pending',
+        verified_by: null,
+        verified_at: null,
+        rejection_reason: null,
+        verification_comments: [],
+        history: [
+          {
+            from_status: '',
+            to_status: 'draft',
+            action: 'import',
+            by_id: user.id,
+            by_name: adminName,
+            reason: `Imported via ${format.toUpperCase()} batch`,
+            timestamp: now,
+          },
+        ],
+      };
+
+      normalized.schema_version = '1.0.0';
+      normalized.version = 1;
+      normalized.is_archived = false;
+      normalized.deleted_at = null;
+      normalized.deleted_by = null;
+      normalized.deletion_reason = null;
 
       // Zod Validation
       const result = QuestionSchema.safeParse({
         ...normalized,
         created_by: user.id,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        created_at: now,
+        updated_at: now,
       });
 
       if (!result.success) {
-        const errors = result.error.issues.map(
+        const zodErrors = result.error.issues.map(
           (issue) => `${issue.path.join('.')}: ${issue.message}`
         );
+        errors.push(...zodErrors);
+      }
+
+      if (errors.length > 0) {
         invalidRecords.push({
           lineIndex: item.lineIndex,
           id: recordId,
           errors,
           raw: item.raw,
         });
-      } else {
+      } else if (result.success) {
         validQuestions.push(result.data);
       }
     }
 
-    // Insert valid questions in batch into Supabase
-    let importedCount = 0;
-    if (validQuestions.length > 0) {
-      const { error: insertError } = await supabase
-        .from('questions')
-        .upsert(validQuestions, { onConflict: 'id' });
+    // If PREVIEW MODE: return validation breakdown without writing to database
+    if (mode === 'validate_preview') {
+      return NextResponse.json({
+        success: true,
+        mode: 'validate_preview',
+        summary: {
+          totalRecords: rawRecords.length,
+          validCount: validQuestions.length,
+          invalidCount: invalidRecords.length,
+          duplicateInFileCount,
+          existingInDbCount,
+          missingTamilCount,
+          missingEnglishCount,
+          missingAnswerCount,
+          invalidSyllabusCount,
+        },
+        previewSample: validQuestions.slice(0, 5),
+        invalidRecords: invalidRecords.slice(0, 50),
+      });
+    }
 
-      if (insertError) {
-        return NextResponse.json(
-          { error: `Database insert failed: ${insertError.message}` },
-          { status: 500 }
-        );
+    // COMMIT MODE: Write valid questions in batches into Supabase
+    let importedCount = 0;
+    const batchId = `BATCH-${Date.now().toString(36).toUpperCase()}`;
+
+    if (validQuestions.length > 0) {
+      // Chunk insertions into blocks of 100 for network safety and memory optimization
+      const chunkSize = 100;
+      for (let i = 0; i < validQuestions.length; i += chunkSize) {
+        const chunk = validQuestions.slice(i, i + chunkSize);
+        const { error: insertError } = await supabase
+          .from('questions')
+          .upsert(chunk, { onConflict: 'id' });
+
+        if (insertError) {
+          return NextResponse.json(
+            { error: `Database insert failed at records ${i + 1}-${i + chunk.length}: ${insertError.message}` },
+            { status: 500 }
+          );
+        }
       }
+
       importedCount = validQuestions.length;
+
+      // Log Bulk Audit Events for every successfully imported question
+      const auditEntries: AuditLogEntry[] = validQuestions.map((q) => ({
+        userId: user.id,
+        action: 'question_import',
+        entityType: 'question',
+        entityId: q.id,
+        details: {
+          batch_id: batchId,
+          format,
+          status: 'draft',
+          subject_id: q.syllabus?.subject_id,
+          unit_id: q.syllabus?.unit_id,
+          lesson_id: q.syllabus?.lesson_id,
+        },
+      }));
+
+      await logBulkAuditEvents(supabase, auditEntries);
+
+      // Log master batch audit record
+      await logAuditEvent(supabase, {
+        userId: user.id,
+        action: 'import_batch_complete',
+        entityType: 'import_batch',
+        entityId: batchId,
+        details: {
+          totalProcessed: rawRecords.length,
+          importedCount,
+          failedCount: invalidRecords.length,
+          format,
+          mappingStrategy,
+          commonMapping,
+        },
+      });
     }
 
     return NextResponse.json({
       success: true,
+      mode: 'commit',
+      batchId,
       summary: {
         totalProcessed: rawRecords.length,
         importedCount,
         failedCount: invalidRecords.length,
+        duplicateInFileCount,
+        existingInDbCount,
+        missingTamilCount,
+        missingEnglishCount,
+        missingAnswerCount,
+        invalidSyllabusCount,
       },
+      message: `Successfully imported ${importedCount} question(s) into Draft / Pending Review.${
+        invalidRecords.length > 0 ? ` (${invalidRecords.length} records rejected due to validation errors)` : ''
+      }`,
       invalidRecords,
     });
   } catch (err: any) {

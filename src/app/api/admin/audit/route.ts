@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action');
     const entityType = searchParams.get('entity_type');
+    const entityId = searchParams.get('entity_id');
     const limit = Math.min(100, Math.max(10, parseInt(searchParams.get('limit') || '50', 10)));
 
     let query = supabase
@@ -50,6 +51,10 @@ export async function GET(request: NextRequest) {
 
     if (entityType && entityType !== 'all') {
       query = query.eq('entity_type', entityType);
+    }
+
+    if (entityId) {
+      query = query.eq('entity_id', entityId);
     }
 
     const { data: logs, error } = await query;
