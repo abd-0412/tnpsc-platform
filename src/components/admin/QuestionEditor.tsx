@@ -187,13 +187,13 @@ export default function QuestionEditor({ initialData, isEditMode = false }: Ques
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-8 max-w-5xl mx-auto pb-16">
+    <form onSubmit={handleSubmit} className="space-y-6 max-w-5xl mx-auto pb-16">
       {/* Top Action Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 sticky top-16 z-30 bg-slate-900/90 backdrop-blur-md p-4 rounded-2xl border border-slate-800 shadow-xl">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 rounded-2xl bg-slate-800/80 border border-slate-700/80 shadow-lg">
         <div className="flex items-center space-x-3">
           <Link
             href="/admin/questions"
-            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+            className="p-2 rounded-xl bg-slate-900 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
           </Link>
@@ -209,7 +209,7 @@ export default function QuestionEditor({ initialData, isEditMode = false }: Ques
           <select
             value={status}
             onChange={(e: any) => setStatus(e.target.value)}
-            className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-slate-200 font-medium focus:ring-1 focus:ring-amber-500"
+            className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-200 font-medium focus:ring-1 focus:ring-amber-500"
           >
             <option value="draft">வரைவு (Draft)</option>
             <option value="under_review">ஆய்வு (Under Review)</option>
@@ -562,6 +562,37 @@ export default function QuestionEditor({ initialData, isEditMode = false }: Ques
               </div>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Bottom Action Footer */}
+      <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-800/80 border border-slate-700/80 shadow-lg">
+        <Link
+          href="/admin/questions"
+          className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition-colors"
+        >
+          ரத்து செய் (Cancel)
+        </Link>
+        <div className="flex items-center space-x-3">
+          <select
+            value={status}
+            onChange={(e: any) => setStatus(e.target.value)}
+            className="px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-200 font-medium focus:ring-1 focus:ring-amber-500"
+          >
+            <option value="draft">வரைவு (Draft)</option>
+            <option value="under_review">ஆய்வு (Under Review)</option>
+            <option value="verified">சரிபார்க்கப்பட்டது (Verified)</option>
+            <option value="published">வெளியிடப்பட்டது (Published)</option>
+          </select>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="inline-flex items-center space-x-2 px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-all shadow-lg shadow-amber-500/20 cursor-pointer disabled:opacity-50"
+          >
+            <Save className="w-4 h-4" />
+            <span>{loading ? 'சேமிக்கப்படுகிறது...' : isEditMode ? 'புதுப்பி (Update)' : 'சேமி (Save Question)'}</span>
+          </button>
         </div>
       </div>
     </form>
