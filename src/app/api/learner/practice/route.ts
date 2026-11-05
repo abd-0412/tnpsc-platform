@@ -80,10 +80,36 @@ export async function GET(request: NextRequest) {
 
     query = query.order('id', { ascending: true }).limit(limit);
 
-    const { data: questions, error } = await query;
+    let { data: questions, error } = await query;
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // Resilience Fallback: If 0 questions returned for a specific lesson node, discover questions from the parent Iyal/Unit
+    if ((!questions || questions.length === 0) && nodeId) {
+      const ancestry = await resolveSyllabusAncestry(supabase, nodeId);
+      if (ancestry.unitId) {
+        let fallbackQuery = supabase
+          .from('questions')
+          .select('id, kind, level, difficulty, syllabus, texts, answer, question_data, source, previous_year, tags, workflow')
+          .eq('is_archived', false)
+          .eq('workflow->>status', 'published')
+          .eq('syllabus->>unit_id', ancestry.unitId);
+
+        if (difficulty !== 'all') {
+          fallbackQuery = fallbackQuery.eq('difficulty', difficulty);
+        }
+        if (kind !== 'all') {
+          fallbackQuery = fallbackQuery.eq('kind', kind);
+        }
+
+        fallbackQuery = fallbackQuery.order('id', { ascending: true }).limit(limit);
+        const { data: fallbackQuestions } = await fallbackQuery;
+        if (fallbackQuestions && fallbackQuestions.length > 0) {
+          questions = fallbackQuestions;
+        }
+      }
     }
 
     // Fetch user's saved mistake_vault question IDs to display bookmark state

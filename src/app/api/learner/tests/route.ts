@@ -185,14 +185,47 @@ export async function POST(request: NextRequest) {
 
       targetQuestions = qData || [];
 
-      // If no questions specific to this node, fetch any available questions in same subject
-      if (targetQuestions.length === 0) {
-        const { data: fallbackQ } = await supabase
+      // Hierarchical Fallback: If 0 questions specific to this node, discover from parent unit / term / class
+      if (targetQuestions.length === 0 && ancestry.unitId) {
+        const { data: unitQ } = await supabase
           .from('questions')
           .select('*')
           .eq('is_archived', false)
-          .limit(20);
-        targetQuestions = fallbackQ || [];
+          .eq('workflow->>status', 'published')
+          .eq('syllabus->>unit_id', ancestry.unitId)
+          .order('id', { ascending: true })
+          .limit(100);
+        if (unitQ && unitQ.length > 0) {
+          targetQuestions = unitQ;
+        }
+      }
+
+      if (targetQuestions.length === 0 && ancestry.termId) {
+        const { data: termQ } = await supabase
+          .from('questions')
+          .select('*')
+          .eq('is_archived', false)
+          .eq('workflow->>status', 'published')
+          .eq('syllabus->>term_id', ancestry.termId)
+          .order('id', { ascending: true })
+          .limit(100);
+        if (termQ && termQ.length > 0) {
+          targetQuestions = termQ;
+        }
+      }
+
+      if (targetQuestions.length === 0 && ancestry.classId) {
+        const { data: classQ } = await supabase
+          .from('questions')
+          .select('*')
+          .eq('is_archived', false)
+          .eq('workflow->>status', 'published')
+          .eq('syllabus->>class_id', ancestry.classId)
+          .order('id', { ascending: true })
+          .limit(100);
+        if (classQ && classQ.length > 0) {
+          targetQuestions = classQ;
+        }
       }
 
       testDuration = Math.max(15, Math.ceil(targetQuestions.length * 1.5));

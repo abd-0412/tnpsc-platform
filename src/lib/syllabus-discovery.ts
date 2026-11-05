@@ -102,9 +102,22 @@ export function buildSyllabusDiscoveryFilter(ancestry: NodeAncestry): string {
   clauses.push(`syllabus->>term_id.eq.${targetNodeId}`);
   clauses.push(`syllabus->>class_id.eq.${targetNodeId}`);
 
-  // 2. If target is a lesson: include questions with lesson_scope='all' in the same unit
+  // 2. If target is a lesson:
   if (unitId) {
+    // A. Questions in this unit with broad lesson scope
     clauses.push(`and(syllabus->>unit_id.eq.${unitId},syllabus->>lesson_scope.eq.all)`);
+
+    // B. Match by lesson number variations in raw JSONs (e.g., std-9-i1-l3 -> lesson-03, lesson-3, ta-l3, l3)
+    const match = targetNodeId.match(/-l(\d+)$/i);
+    if (match) {
+      const num = match[1];
+      const padNum = num.padStart(2, '0');
+      clauses.push(`and(syllabus->>unit_id.eq.${unitId},syllabus->>lesson_id.ilike.%lesson-${padNum}%)`);
+      clauses.push(`and(syllabus->>unit_id.eq.${unitId},syllabus->>lesson_id.ilike.%lesson-${num}%)`);
+      clauses.push(`and(syllabus->>unit_id.eq.${unitId},syllabus->>lesson_id.ilike.%ta-l${num}%)`);
+      clauses.push(`and(syllabus->>unit_id.eq.${unitId},syllabus->>lesson_id.ilike.%-l${num}%)`);
+      clauses.push(`and(syllabus->>unit_id.eq.${unitId},syllabus->>lesson_id.eq.l${num})`);
+    }
   }
 
   // 3. If target is a unit or lesson: include questions with unit_scope='all' in the same term
