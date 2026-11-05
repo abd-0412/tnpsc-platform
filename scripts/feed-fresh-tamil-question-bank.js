@@ -73,6 +73,11 @@ function extractUnitInfo(q, filePath) {
       isPYQ = true;
     } else {
       iyal = parseInt(m67[4], 10);
+      // Special case: 7th Term 3 unit 4 is actually the PYQ Bridging section
+      if (std === 7 && term === 3 && iyal === 4) {
+        isPYQ = true;
+        iyal = null;
+      }
     }
   } else {
     const m812 = id.match(/^(\d+)th[_-](?:tamil[_-])?u(\d+)/i);
@@ -92,8 +97,14 @@ function extractUnitInfo(q, filePath) {
   }
 
   // Handle special revision or pyq bridging cases in 7th, 8th, 9th, 10th, 11th, 12th
-  if (filePath.toLowerCase().includes('pyq') || filePath.toLowerCase().includes('booster') || filePath.toLowerCase().includes('revision')) {
+  if (
+    filePath.toLowerCase().includes('pyq') ||
+    filePath.toLowerCase().includes('booster') ||
+    filePath.toLowerCase().includes('revision') ||
+    q.syllabus?.unit_id === 'ta-t3-pyq-bridging'
+  ) {
     isPYQ = true;
+    if (std === 7 && term === 3 && iyal === 4) iyal = null;
   }
 
   let unitId;
