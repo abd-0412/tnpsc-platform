@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { fetchQuestionsByIds } from '@/lib/question-fetcher';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,12 +50,9 @@ export async function POST(
         return NextResponse.json({ error: 'Test attempt or template not found' }, { status: 404 });
       }
 
-      // Fetch questions
+      // Fetch questions safely in chunks
       const questionIds: string[] = template.question_ids || [];
-      const { data: questions } = await supabase
-        .from('questions')
-        .select('*')
-        .in('id', questionIds);
+      const questions = await fetchQuestionsByIds(supabase, questionIds);
 
       // Create new attempt
       const { data: newAttempt, error: createError } = await supabase
@@ -78,7 +76,7 @@ export async function POST(
       attempt = newAttempt;
       attemptId = newAttempt.id;
 
-      // Create attempt items
+      // Create attempt items in batches of 200
       const itemsToInsert = (questions || []).map((q, idx) => ({
         attempt_id: attemptId,
         user_id: user.id,
@@ -89,8 +87,10 @@ export async function POST(
         marks_obtained: 0.0,
       }));
 
-      if (itemsToInsert.length > 0) {
-        await supabase.from('test_attempt_items').insert(itemsToInsert);
+      const BATCH_SIZE = 200;
+      for (let i = 0; i < itemsToInsert.length; i += BATCH_SIZE) {
+        const chunk = itemsToInsert.slice(i, i + BATCH_SIZE);
+        await supabase.from('test_attempt_items').insert(chunk);
       }
     }
 

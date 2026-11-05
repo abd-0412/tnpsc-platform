@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { fetchQuestionsByIds } from '@/lib/question-fetcher';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,19 +37,14 @@ export async function GET(
       return NextResponse.json({ error: 'Test template not found' }, { status: 404 });
     }
 
-    // Fetch questions linked to this test template
+    // Fetch questions linked to this test template safely in chunks
     let questions: any[] = [];
     if (test.question_ids && test.question_ids.length > 0) {
-      const { data: qData } = await supabase
-        .from('questions')
-        .select('id, kind, level, difficulty, texts, answer, question_settings, source, syllabus, tags, workflow')
-        .in('id', test.question_ids);
-
-      // Preserve the specific order in test.question_ids
-      if (qData) {
-        const qMap = new Map(qData.map(q => [q.id, q]));
-        questions = test.question_ids.map((qid: string) => qMap.get(qid)).filter(Boolean);
-      }
+      questions = await fetchQuestionsByIds(
+        supabase,
+        test.question_ids,
+        'id, kind, level, difficulty, texts, answer, question_settings, source, syllabus, tags, workflow'
+      );
     }
 
     return NextResponse.json({ test, questions });

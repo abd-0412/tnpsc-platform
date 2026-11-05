@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { resolveSyllabusAncestry, buildSyllabusDiscoveryFilter } from '@/lib/syllabus-discovery';
+import { fetchQuestionsByIds } from '@/lib/question-fetcher';
 
 export const dynamic = 'force-dynamic';
 
@@ -152,15 +153,7 @@ export async function POST(request: NextRequest) {
       totalMarks = Number(template.total_marks);
 
       if (template.question_ids && template.question_ids.length > 0) {
-        const { data: qData } = await supabase
-          .from('questions')
-          .select('*')
-          .in('id', template.question_ids);
-
-        if (qData) {
-          const qMap = new Map(qData.map((q) => [q.id, q]));
-          targetQuestions = template.question_ids.map((id: string) => qMap.get(id)).filter(Boolean);
-        }
+        targetQuestions = await fetchQuestionsByIds(supabase, template.question_ids);
       }
     } else if (dynamic_mode && syllabus_node_id) {
       // Dynamic test from Syllabus (Lesson, Iyal, Term, or Standard)
@@ -264,13 +257,18 @@ export async function POST(request: NextRequest) {
       time_spent_seconds: 0,
     }));
 
-    const { error: itemsError } = await supabase
-      .from('test_attempt_items')
-      .insert(attemptItems);
+    // Insert test_attempt_items in batches of 200 to prevent payload overflow
+    const BATCH_SIZE = 200;
+    for (let i = 0; i < attemptItems.length; i += BATCH_SIZE) {
+      const chunk = attemptItems.slice(i, i + BATCH_SIZE);
+      const { error: itemsError } = await supabase
+        .from('test_attempt_items')
+        .insert(chunk);
 
-    if (itemsError) {
-      console.error('Error inserting attempt items:', itemsError);
-      return NextResponse.json({ error: itemsError.message }, { status: 500 });
+      if (itemsError) {
+        console.error('Error inserting attempt items batch:', itemsError);
+        return NextResponse.json({ error: itemsError.message }, { status: 500 });
+      }
     }
 
     return NextResponse.json({

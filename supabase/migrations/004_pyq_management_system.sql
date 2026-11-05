@@ -163,3 +163,4 @@ INSERT INTO public.pyq_papers (
     'ready_to_publish'
 )
 ON CONFLICT (id) DO NOTHING;
+

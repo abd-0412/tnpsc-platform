@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { fetchQuestionsByIds } from '@/lib/question-fetcher';
 
 export const dynamic = 'force-dynamic';
 
@@ -90,16 +91,7 @@ export async function GET(
     let questionsList: any[] = [];
 
     if (questionIds.length > 0) {
-      const { data: qData } = await supabase
-        .from('questions')
-        .select('*')
-        .in('id', questionIds);
-
-      // Preserve template order
-      const qMap = new Map((qData || []).map((q) => [q.id, q]));
-      questionsList = questionIds
-        .map((qid) => qMap.get(qid))
-        .filter(Boolean);
+      questionsList = await fetchQuestionsByIds(supabase, questionIds);
     } else {
       // If template has no explicit question IDs, fallback to published sample questions
       const { data: fallbackQ } = await supabase
