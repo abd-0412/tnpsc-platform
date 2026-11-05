@@ -104,3 +104,4 @@ async function purgePlatform() {
 }
 
 purgePlatform();
+
